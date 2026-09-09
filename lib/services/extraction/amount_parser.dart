@@ -48,7 +48,7 @@ class AmountParser {
   /// Colloquial fractions that act as multiplicands: "dhai sau" = 250.
   static const _fractions = <String, double>{
     'aadha': 0.5, 'adha': 0.5, 'sava': 1.25, 'savaa': 1.25,
-    'derh': 1.5, 'dedh': 1.5, 'dhai': 2.5, 'dhaai': 2.5, 'saade': 0.0,
+    'derh': 1.5, 'dedh': 1.5, 'dhai': 2.5, 'dhaai': 2.5,
     'आधा': 0.5, 'सवा': 1.25,
     'डेढ़': 1.5, 'ढाई': 2.5,
     'half': 0.5,
@@ -99,29 +99,35 @@ class AmountParser {
   /// Best-effort amount for a whole utterance. Returns null when nothing
   /// number-shaped is present.
   ///
-  /// Digits win over words: if the text contains "500", that is almost
-  /// certainly the amount, and word-number parsing is only a fallback.
+  /// A khata sentence often carries more than one number — a quantity and an
+  /// amount — so every candidate is collected from both the digit and word
+  /// forms, and one is chosen by two rules:
+  ///
+  ///   1. a number sitting next to "rupaye"/"rs" is the amount;
+  ///   2. failing that, the largest, since quantities are small and amounts
+  ///      are not.
+  ///
+  /// Adjacency has to outrank digits-over-words: "paanch sau rupaye ka 2 kilo
+  /// chawal" would otherwise read as 2.
   static double? parse(String input) {
     if (input.trim().isEmpty) return null;
     final tokens = tokenise(input);
     if (tokens.isEmpty) return null;
 
-    final digitAmount = _parseDigitForm(tokens);
-    if (digitAmount != null) return digitAmount;
+    final candidates = <_Candidate>[
+      ..._digitCandidates(tokens),
+      ..._wordCandidates(tokens),
+    ];
+    if (candidates.isEmpty) return null;
 
-    final wordAmount = _parseWordForm(tokens);
-    return wordAmount;
+    final adjacent = candidates.where((c) => c.nextToCurrency).toList();
+    final pool = adjacent.isNotEmpty ? adjacent : candidates;
+    return pool.map((c) => c.value).reduce((a, b) => a > b ? a : b);
   }
 
-  /// Collects every digit-form candidate, applying an adjacent multiplier
-  /// ("5 sau" = 500).
-  ///
-  /// A khata sentence often carries more than one number — "2 kilo chawal 500
-  /// rupaye" has a quantity and an amount — so all candidates are gathered and
-  /// one is chosen, rather than taking the first and hoping.
-  static double? _parseDigitForm(List<String> tokens) {
-    final candidates = <double>[];
-    final currencyAdjacent = <double>[];
+  /// Digit-form numbers, applying an adjacent Hindi multiplier ("5 sau" = 500).
+  static List<_Candidate> _digitCandidates(List<String> tokens) {
+    final out = <_Candidate>[];
 
     for (var i = 0; i < tokens.length; i++) {
       final token = tokens[i];
@@ -133,57 +139,56 @@ class AmountParser {
       final next = i + 1 < tokens.length ? tokens[i + 1] : null;
       final prev = i > 0 ? tokens[i - 1] : null;
 
-      // "5 sau" = 500, the colloquial hybrid of digits and Hindi multipliers.
       if (next != null && _multipliers.containsKey(next)) {
         value *= _multipliers[next]!;
       }
 
-      candidates.add(value);
-
-      // A number sitting next to "rupaye"/"rs" is almost certainly the amount,
-      // which beats any size-based guess.
-      if ((next != null && currencyWords.contains(next)) ||
-          (prev != null && currencyWords.contains(prev))) {
-        currencyAdjacent.add(value);
-      }
+      out.add(_Candidate(
+        value,
+        nextToCurrency: (next != null && currencyWords.contains(next)) ||
+            (prev != null && currencyWords.contains(prev)),
+      ));
     }
-
-    if (currencyAdjacent.isNotEmpty) return currencyAdjacent.reduce(_max);
-    if (candidates.isNotEmpty) return candidates.reduce(_max);
-    return null;
+    return out;
   }
 
-  /// Parses word-form numbers, segmented into runs.
+  /// Word-form numbers, segmented into runs.
   ///
   /// Runs matter: "paanch kilo chawal teen sau" is two separate numbers, and
   /// accumulating across the whole sentence would read it as 800 instead of
-  /// 300. Any token that is not part of a number closes the current run, and
-  /// the largest run wins — quantities are small, amounts are not.
-  static double? _parseWordForm(List<String> tokens) {
-    final candidates = <double>[];
+  /// 300. Any token that is not part of a number closes the current run.
+  static List<_Candidate> _wordCandidates(List<String> tokens) {
+    final out = <_Candidate>[];
 
     var total = 0.0;
     var current = 0.0;
     var inRun = false;
     var pendingHalf = false;
+    var nextToCurrency = false;
 
     void closeRun() {
       if (inRun) {
         final value = total + current;
-        if (value > 0) candidates.add(value);
+        if (value > 0) {
+          out.add(_Candidate(value, nextToCurrency: nextToCurrency));
+        }
       }
       total = 0;
       current = 0;
       inRun = false;
       pendingHalf = false;
+      nextToCurrency = false;
     }
 
     for (final token in tokens) {
-      // Currency words sit inside an amount phrase, so they neither add value
-      // nor break the run.
-      if (currencyWords.contains(token)) continue;
+      // A currency word sits inside the amount phrase: it adds no value and
+      // does not break the run, but it does mark the run as the amount.
+      if (currencyWords.contains(token)) {
+        if (inRun) nextToCurrency = true;
+        continue;
+      }
 
-      if (token == 'saade' || token == 'साढे') {
+      if (token == 'saade' || token == 'साढ़े' || token == 'साढे') {
         pendingHalf = true;
         inRun = true;
         continue;
@@ -221,9 +226,14 @@ class AmountParser {
     }
     closeRun();
 
-    if (candidates.isEmpty) return null;
-    return candidates.reduce(_max);
+    return out;
   }
+}
 
-  static double _max(double a, double b) => a > b ? a : b;
+/// One parsed number and whether it sat next to a currency word.
+class _Candidate {
+  const _Candidate(this.value, {required this.nextToCurrency});
+
+  final double value;
+  final bool nextToCurrency;
 }

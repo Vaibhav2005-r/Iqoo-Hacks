@@ -56,10 +56,14 @@ class LedgerRepository {
 
   /// Resolve a spoken/OCR'd name to a customer row, creating one if needed.
   ///
-  /// Exact (case-insensitive) match first, then a conservative fuzzy match so
-  /// "Sharma ji" and "sharma" don't become two separate customers. Fuzzy
-  /// matching is deliberately narrow — wrongly merging two real customers is
-  /// worse than creating a duplicate the shopkeeper can see and fix.
+  /// Exact (case-insensitive) match first, then a narrow fuzzy match so
+  /// "Sharma ji" and "sharma" don't become two separate customers.
+  ///
+  /// The ordering is what keeps the fuzzy pass safe: because an exact match
+  /// always wins, a name that is itself already a customer can never be
+  /// absorbed into a longer one. Containment only fires when the spoken name
+  /// is not in the ledger at all, where folding "Ram" into an existing
+  /// "Ram Kumar" is the better guess than inventing a second customer.
   Future<Customer> resolveOrCreateCustomer(int shopId, String rawName) async {
     final name = rawName.trim();
     if (name.isEmpty) {

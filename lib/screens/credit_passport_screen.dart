@@ -445,7 +445,7 @@ class _ComponentRow extends StatelessWidget {
             child: LinearProgressIndicator(
               value: component.ratio,
               minHeight: 6,
-              backgroundColor: theme.colorScheme.surfaceTint.withOpacity(0.1),
+              backgroundColor: theme.colorScheme.surfaceTint.withValues(alpha: 0.1),
             ),
           ),
           const SizedBox(height: 8),

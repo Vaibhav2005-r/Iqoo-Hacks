@@ -423,14 +423,14 @@ class _RecordButton extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: !enabled
-              ? scheme.surfaceTint.withOpacity(0.08)
+              ? scheme.surfaceTint.withValues(alpha: 0.08)
               : recording
                   ? scheme.error
                   : scheme.primary,
           boxShadow: recording
               ? [
                   BoxShadow(
-                    color: scheme.error.withOpacity(0.25),
+                    color: scheme.error.withValues(alpha: 0.25),
                     blurRadius: 24 + amplitude * 20,
                     spreadRadius: amplitude * 8,
                   ),

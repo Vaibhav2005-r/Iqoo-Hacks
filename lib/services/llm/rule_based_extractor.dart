@@ -19,6 +19,9 @@ class RuleBasedExtractor implements TransactionExtractor {
   @override
   Future<bool> isAvailable() async => true;
 
+  @override
+  Future<void> dispose() async {}
+
   /// Words that signal the customer paid money back.
   static const _paymentMarkers = {
     'wapas', 'wapis', 'vapas', 'vapis', 'chukaya', 'chukaye', 'chukta',

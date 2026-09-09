@@ -33,6 +33,25 @@ void main() {
     });
   });
 
+  group('mixed digit and word numbers', () {
+    test('a word amount next to rupaye beats a stray digit quantity', () {
+      // The naive "digits always win" rule reads this as 2.
+      expect(
+        AmountParser.parse('paanch sau rupaye ka 2 kilo chawal'),
+        500,
+      );
+    });
+
+    test('a digit amount next to rupaye beats a larger word quantity', () {
+      // ...and the reverse: 300 here is a weight in grams, 20 is the price.
+      expect(AmountParser.parse('20 rupaye ka teen sau gram'), 20);
+    });
+
+    test('with no currency word, the larger number wins', () {
+      expect(AmountParser.parse('paanch kilo chawal teen sau'), 300);
+    });
+  });
+
   group('Hindi word numbers', () {
     test('romanised', () {
       expect(AmountParser.parse('paanch sau'), 500);

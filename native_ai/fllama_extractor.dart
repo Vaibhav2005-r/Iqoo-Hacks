@@ -218,6 +218,11 @@ Amounts are in rupees. Return only the number, no currency symbol.
     }
   }
 
+  @override
+  Future<void> dispose() async {
+    _modelPath = null;
+  }
+
   static TransactionDraft _draftFromJson(
     Map<String, dynamic> json, {
     required String rawInput,
