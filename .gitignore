@@ -1,0 +1,36 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+**/*.keystore
+**/*.jks
+
+# macOS
+.DS_Store
+
+# On-device model weights are adb-pushed to the phone, never committed.
+# See docs/MODELS.md — these are multi-GB files.
+assets/models/*
+!assets/models/.gitkeep
+*.gguf
+*.bin

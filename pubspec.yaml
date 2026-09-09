@@ -1,0 +1,62 @@
+name: khatasetu
+description: "Voice-and-camera ledger, on-device trust score, and shareable Credit Passport for kirana shopkeepers."
+
+# Never publish to pub.dev.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- Local storage (the ledger lives here, offline-first) ---
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  path_provider: ^2.1.4
+
+  # --- On-device AI ---
+  # OCR is fully on-device via ML Kit; no network call, ships as a hard dependency.
+  google_mlkit_text_recognition: ^0.13.1
+
+  # --- Capture ---
+  record: ^5.1.2               # microphone -> wav for the ASR step
+  image_picker: ^1.1.2         # camera + gallery in one call, less fiddly than `camera`
+
+  # --- Credit Passport ---
+  qr_flutter: ^4.1.0
+  screenshot: ^3.0.0           # rasterise the passport widget; faster than a PDF pipeline
+  share_plus: ^10.0.2
+
+  # --- UI ---
+  cupertino_icons: ^1.0.8
+  intl: ^0.19.0
+
+  # --- On-device LLM + ASR (OPT-IN, see docs/NATIVE_AI.md) -------------------
+  # Deliberately commented out. `fllama` and the whisper.cpp bindings are
+  # community-maintained packages whose native (NDK/ABI) build is the most
+  # likely thing to break, and a broken native build breaks the WHOLE app —
+  # an unacceptable single point of failure the night before a demo.
+  #
+  # The app is architected so these are swappable at runtime:
+  # lib/services/llm/ and lib/services/asr/ each ship a real native
+  # implementation plus a dependency-free on-device fallback, chosen by
+  # AiRuntime at startup. Enable with: ./scripts/enable_native_ai.sh
+  #
+  # fllama:
+  #   git:
+  #     url: https://github.com/Telosnex/fllama.git
+  #     ref: main
+  # whisper_flutter_new: ^1.0.1
+  # --------------------------------------------------------------------------
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

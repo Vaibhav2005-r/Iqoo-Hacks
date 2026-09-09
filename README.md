@@ -1,0 +1,182 @@
+# KhataSetu
+
+**Your khata, your credit history.**
+
+A kirana shopkeeper's paper credit ledger, turned into a digital ledger, a
+transparent trust score, and a shareable Credit Passport — using voice, camera,
+and on-device AI. No account, no server, no network.
+
+Built for the iQOO Hackathon 2026 (Hyderabad), FinTech & Commerce track, by
+**Caffeinated Compilers**.
+
+---
+
+## The problem
+
+India's kirana shopkeepers extend informal credit (*udhar*) to regular
+customers and track it by hand in a notebook. They have years of consistent,
+trackable credit behaviour — and no formal credit history, because it lives on
+paper instead of in a database. So they can't get a working-capital loan.
+
+KhataSetu is the bridge (*setu*) between the two.
+
+---
+
+## What it does
+
+1. **Speak an entry.** *"Sharma ji ko paanch sau ka udhar diya"* → transcribed
+   and structured on the phone → an editable confirmation card → saved.
+2. **Scan a khata page.** Photograph a paper ledger page → on-device OCR →
+   structured into a checkable batch of candidate entries.
+3. **See a trust score.** Rule-based, computed from the shopkeeper's own
+   ledger, with every point explained in plain language.
+4. **Share a Credit Passport.** A card with the score, its breakdown, summary
+   stats, and a QR a lender can scan — the QR carries the data itself, so it
+   works with no server behind it.
+
+---
+
+## Running it
+
+```bash
+git clone https://github.com/Vaibhav2005-r/Iqoo-Hacks.git
+cd Iqoo-Hacks
+./scripts/setup.sh
+flutter run
+```
+
+`scripts/setup.sh` generates the `android/` scaffolding with `flutter create`
+(it is not committed, so it always matches your Flutter version), applies the
+required permissions and `minSdk`, and fetches packages.
+
+```bash
+flutter test      # logic tests: amount parsing, extraction, scoring
+```
+
+---
+
+## Architecture
+
+```
+lib/
+  models/       Shop, Customer, LedgerTransaction, TrustScoreSnapshot
+  db/           sqflite schema + LedgerRepository (all reads and writes)
+  state/        LedgerController (ChangeNotifier, single source of truth)
+  services/
+    ai_runtime.dart          picks engines, merges and repairs their output
+    native_ai_bindings.dart  the one file that swaps rules <-> native models
+    extraction/              TransactionDraft, Hindi/English AmountParser
+    llm/                     extractor interface + RuleBasedExtractor
+    asr/                     ASR interface + microphone capture
+    ocr_service.dart         ML Kit text recognition
+    scoring_service.dart     the trust score
+    passport_service.dart    QR payload + share
+  screens/      onboarding, home, voice entry, camera scan, customer, passport
+  widgets/      AppCard, DraftEditor, EmptyState, OnDeviceBadge
+native_ai/      opt-in llama.cpp + whisper.cpp implementations (see below)
+```
+
+### Why the AI layer is built the way it is
+
+`fllama` and the whisper.cpp Flutter bindings are community-maintained packages
+whose native NDK/ABI build is the most likely thing in this stack to break —
+and a broken native build breaks compilation of the *entire app*. Discovering
+that the night before a demo would be fatal.
+
+So the native implementations live in `native_ai/`, outside `lib/`, and are
+copied in by a script. The app always compiles and always runs end-to-end:
+
+| | Extraction | Speech |
+|---|---|---|
+| **Default** | `RuleBasedExtractor` — deterministic, on-device, zero deps | falls back to typed input |
+| **Native enabled** | Gemma-2B GGUF via llama.cpp | whisper-tiny via whisper.cpp |
+
+`AiRuntime` chooses at startup and degrades at request time: if the LLM returns
+malformed JSON, times out, or drops a field, the deterministic result fills the
+gap. A model failure costs extraction quality, never the entry.
+
+The rule-based extractor is not a stub. It handles Devanagari and romanised
+Hindi plus English, colloquial number forms (`dhai sau` = 250, `saade teen sau`
+= 350), Indian digit grouping, direction detection with correct precedence
+(`paise wapas diye` is a payment, not credit), and name resolution against the
+existing customer roster. It is what keeps the demo alive on stage.
+
+To turn the real models on:
+
+```bash
+./scripts/enable_native_ai.sh   # and ./scripts/disable_native_ai.sh to revert
+```
+
+See [docs/NATIVE_AI.md](docs/NATIVE_AI.md) and [docs/MODELS.md](docs/MODELS.md).
+
+---
+
+## The trust score
+
+Rule-based and fully transparent, out of 100:
+
+| Component | Max | Basis |
+|---|---|---|
+| Repayment consistency | 40 | rupees repaid ÷ rupees extended, averaged per customer |
+| Ledger history | 20 | days from first to latest entry (180 = full marks) |
+| Active customers | 20 | distinct customers with entries (15 = full marks) |
+| Recent activity | 20 | entries in the last 30 days (40 = full marks) |
+
+Deliberately not ML. Someone being shown a number that gates their loan should
+be able to be told exactly why it is what it is, and what raises it. Every
+component carries its own plain-language explanation, and the passport renders
+those verbatim.
+
+**One deviation from the original spec, on purpose:** repayment is weighted by
+*money*, not by transaction count. Counts are trivially misleading — one ₹5,000
+udhar settled by one ₹10 payment would score a perfect 1.0. Rupees repaid
+against rupees extended is what a lender actually cares about.
+
+Below 5 entries the score is labelled provisional, in the UI and on the
+passport. A confident-looking number built on four entries would be the same
+dishonesty this product exists to fix.
+
+---
+
+## Privacy
+
+- No ledger data, audio, or image leaves the device. Ever.
+- Audio clips are deleted immediately after transcription.
+- **The release build declares no `INTERNET` permission.** Flutter injects it
+  into debug/profile manifests for hot reload; the release manifest has none,
+  so the app *cannot* make a network call. Verify it yourself:
+
+  ```bash
+  aapt dump permissions build/app/outputs/flutter-apk/app-release.apk
+  ```
+
+---
+
+## Honest limitations
+
+- **This is on-device inference, not NPU acceleration.** llama.cpp on Android
+  runs on CPU (and GPU via Vulkan where available), not the Hexagon NPU. Real
+  NPU delegation would mean Qualcomm's QNN SDK — a much larger integration than
+  a 30-hour build allows. The UI and this README say "on-device" and mean it.
+- **whisper-tiny multilingual is mediocre on Hindi.** Community reports are
+  consistent on this and we are not going to pretend otherwise. The product
+  answer is the confirmation card: every transcription is shown verbatim as
+  "what I heard" and every field is editable, so a mishearing is a one-tap fix
+  rather than a wrong ledger entry.
+- **Handwriting OCR makes mistakes.** Scanned rows arrive unchecked when the
+  pipeline is unsure, the raw OCR text stays one tap away, and nothing is saved
+  without review.
+- **No encryption at rest.** SQLite, unencrypted. A real deployment needs
+  SQLCipher; that is a roadmap item, not something to rush under time pressure.
+
+## Not built (deliberately out of scope)
+
+Real bank/NBFC integration · payments · KYC · auth beyond one local shop
+profile · cloud sync · multi-device · fraud detection · underwriting logic
+beyond the transparent scorer.
+
+---
+
+## Team
+
+Caffeinated Compilers — Vaibhav Rajendra Dohare, Devaansh Sharma, Nitin Singh.
