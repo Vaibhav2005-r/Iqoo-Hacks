@@ -23,7 +23,7 @@ dependencies:
   google_mlkit_text_recognition: ^0.13.1
 
   # --- Capture ---
-  record: ^5.1.2               # microphone -> wav for the ASR step
+  record: ^7.1.1               # microphone -> wav for the ASR step
   image_picker: ^1.1.2         # camera + gallery in one call, less fiddly than `camera`
 
   # --- Credit Passport ---

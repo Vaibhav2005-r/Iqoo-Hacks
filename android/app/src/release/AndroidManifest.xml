@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Release-only manifest overlay.
+
+         ML Kit pulls in com.google.android.datatransport:transport-backend-cct
+         transitively, and that component declares INTERNET and
+         ACCESS_NETWORK_STATE so it can upload usage telemetry to Google. We
+         never ask for a network, and a ledger app for shopkeepers should not
+         ship a telemetry uploader, so both permissions are stripped from the
+         release build.
+
+         The Devanagari text recogniser is the BUNDLED artefact, so OCR reads
+         a model shipped inside the APK and needs no network at any point.
+
+         This overlay is release-only on purpose: Flutter injects INTERNET into
+         the debug manifest for hot reload, and removing it there would break
+         `flutter run`. -->
+    <uses-permission android:name="android.permission.INTERNET"
+        tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+</manifest>

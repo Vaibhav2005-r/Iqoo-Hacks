@@ -14,3 +14,4 @@ analyzer:
     - build/**
     - native_ai/**
     - "**/*.g.dart"
+    - android/**

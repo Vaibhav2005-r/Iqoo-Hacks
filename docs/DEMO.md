@@ -56,10 +56,16 @@ mode. The release build doesn't even declare the internet permission."
 If a judge asks whether it really runs on-device:
 
 ```bash
-aapt dump permissions build/app/outputs/flutter-apk/app-release.apk
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump permissions \
+  build/app/outputs/flutter-apk/app-release.apk
 ```
 
 No `android.permission.INTERNET`. The app *cannot* make a network call.
+
+The story behind it is worth telling if a judge is technical: ML Kit pulls in
+Google's telemetry uploader transitively, which adds `INTERNET` to the merged
+manifest. We strip it in the release manifest. Finding that took actually
+building the APK and reading the merger report — it is not visible in source.
 
 ## Things to say accurately
 

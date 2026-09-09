@@ -41,17 +41,31 @@ KhataSetu is the bridge (*setu*) between the two.
 ```bash
 git clone https://github.com/Vaibhav2005-r/Iqoo-Hacks.git
 cd Iqoo-Hacks
-./scripts/setup.sh
+flutter pub get
 flutter run
 ```
 
-`scripts/setup.sh` generates the `android/` scaffolding with `flutter create`
-(it is not committed, so it always matches your Flutter version), applies the
-required permissions and `minSdk`, and fetches packages.
+`android/` is committed and is the exact project verified to build — including
+R8 keep rules and the release manifest overlay, both of which took an actual
+APK build to discover. See [docs/ANDROID.md](docs/ANDROID.md).
 
 ```bash
-flutter test      # logic tests: amount parsing, extraction, scoring
+flutter test                 # 61 tests: amount parsing, extraction, scoring, UI
+flutter build apk --release  # ~84 MB, or --split-per-abi for arm64 only
+./scripts/setup.sh           # only if android/ is missing or broken
 ```
+
+### Verified against
+
+Flutter 3.47.2 · Dart 3.13.2 · Android SDK 36.0.0 · Gradle 9.3.1 · JDK 25.
+
+- `flutter analyze` — no issues
+- `flutter test` — 61 passing
+- `flutter build apk --release` — builds, no `INTERNET` permission
+
+Not yet verified: **runtime behaviour on a physical device.** Nothing here has
+been run on an Android phone. The first thing to do on the demo device is a
+scan and a save.
 
 ---
 
@@ -142,13 +156,34 @@ dishonesty this product exists to fix.
 
 - No ledger data, audio, or image leaves the device. Ever.
 - Audio clips are deleted immediately after transcription.
-- **The release build declares no `INTERNET` permission.** Flutter injects it
-  into debug/profile manifests for hot reload; the release manifest has none,
-  so the app *cannot* make a network call. Verify it yourself:
+- **The release build declares no `INTERNET` permission**, so the app
+  physically cannot make a network call.
 
-  ```bash
-  aapt dump permissions build/app/outputs/flutter-apk/app-release.apk
-  ```
+That last point took work, and the reason is worth knowing. ML Kit pulls in
+`com.google.android.datatransport:transport-backend-cct` transitively — a
+Google *telemetry uploader* — and that library's manifest contributes
+`INTERNET` and `ACCESS_NETWORK_STATE` to the merged manifest. Left alone, a
+release APK ships with network access and a component that wants to phone home.
+
+`android/app/src/release/AndroidManifest.xml` strips both with
+`tools:node="remove"`. Release only — Flutter injects `INTERNET` into the debug
+manifest for hot reload, and removing it there would break `flutter run`.
+
+Verify it yourself on a release build:
+
+```bash
+$ANDROID_HOME/build-tools/36.0.0/aapt2 dump permissions \
+  build/app/outputs/flutter-apk/app-release.apk
+```
+
+Confirmed output — RECORD_AUDIO, CAMERA, READ_MEDIA_IMAGES,
+READ_EXTERNAL_STORAGE, and nothing else.
+
+OCR still works because the Devanagari recogniser is the *bundled* ML Kit
+artefact: the model ships inside the APK and is never downloaded. **Smoke-test
+a scan on the device after any dependency change** — this is the one behaviour
+that a permission strip could plausibly break, and no static check will catch
+it.
 
 ---
 
