@@ -1,17 +1,20 @@
 # KhataSetu R8/ProGuard rules.
 #
-# google_mlkit_text_recognition's Java code references every script
-# recogniser (Latin, Chinese, Japanese, Korean, Devanagari), but we depend on
-# only the Devanagari artefact to keep the APK small. R8 then fails the
-# release build on the classes that are not there.
+# google_mlkit_text_recognition's Java code references every script recogniser,
+# but the plugin bundles only Latin and this app additionally declares
+# Devanagari (see build.gradle.kts). Chinese, Japanese and Korean are genuinely
+# absent, and R8 fails the release build on them.
 #
-# Suppressing the warnings is correct rather than a workaround: those code
-# paths are unreachable because the app never asks for those scripts. The
-# alternative is shipping four more recognition models we will never load.
+# Suppressing those three is correct: the app never asks for those scripts, so
+# the code paths are unreachable, and the alternative is shipping three
+# recognition models it will never load.
+#
+# Devanagari is deliberately NOT in this list. It is a real dependency, and
+# silencing it here is what hid a NoClassDefFoundError that crashed the scan
+# flow at runtime while the build stayed green.
 -dontwarn com.google.mlkit.vision.text.chinese.**
 -dontwarn com.google.mlkit.vision.text.japanese.**
 -dontwarn com.google.mlkit.vision.text.korean.**
--dontwarn com.google.mlkit.vision.text.devanagari.**
 
 # Keep the ML Kit entry points the plugin reflects over.
 -keep class com.google.mlkit.** { *; }

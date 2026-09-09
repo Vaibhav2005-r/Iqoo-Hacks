@@ -41,12 +41,13 @@ Release builds fail without these:
 Missing class com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 ```
 
-`google_mlkit_text_recognition`'s Java code references every script recogniser
-(Latin, Chinese, Japanese, Korean, Devanagari), but the project depends only on
-the Devanagari artefact. R8 then fails on the classes that are not there.
-`-dontwarn` is the correct answer rather than a workaround: those code paths
-are unreachable because the app never asks for those scripts, and the
-alternative is shipping four recognition models it will never load.
+`google_mlkit_text_recognition`'s Java code references every script recogniser,
+but the plugin bundles only **Latin**. Chinese, Japanese and Korean are
+genuinely absent, and R8 fails the release build on them. `-dontwarn` is the
+right answer for those three: the app never asks for those scripts, so the code
+paths are unreachable.
+
+Devanagari is deliberately **not** in the `-dontwarn` list — see section 5.
 
 Debug builds do not minify, so this only ever bites on release — the build you
 make last, under time pressure.
@@ -85,6 +86,27 @@ nothing else. A new dependency can quietly reintroduce `INTERNET`.
 Devanagari model, so it needs no network — but a permission strip is exactly
 the kind of change that no static check will catch if that assumption is ever
 wrong.
+
+## 5. The Devanagari recogniser — `android/app/build.gradle.kts`
+
+```kotlin
+dependencies {
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+}
+```
+
+The plugin ships only the Latin recogniser. Every other script is an opt-in
+artefact the app must declare, and asking for a missing one is **not** a build
+error — it is a `NoClassDefFoundError` the instant a scan runs.
+
+This was found by scanning a page on a device: the build was green, the tests
+passed, and the app crashed straight to the launcher. Worse, the original
+`-dontwarn ...devanagari.**` line actively hid it, silencing the one warning
+that pointed at the problem. Suppressing a warning for a dependency you
+actually need converts a build error into a runtime crash.
+
+If you ever add another script, add both the artefact and its removal from the
+`-dontwarn` list.
 
 ## Which manifest wins
 

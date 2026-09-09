@@ -92,9 +92,9 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
 
       final stopwatch = Stopwatch()..start();
       final drafts = await AiRuntime.instance.extractBatch(
-        // Line structure is the signal on a ledger page, so the line-joined
-        // text is passed rather than ML Kit's block-ordered blob.
-        ocr.lines.join('\n'),
+        // Row-grouped text, not raw lines: a khata page is a table, and
+        // ML Kit hands back each cell separately.
+        ocr.rows.join('\n'),
         knownCustomers: widget.controller.knownCustomerNames,
         source: TxSource.cameraScan,
       );
@@ -175,7 +175,7 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
             ),
             const SizedBox(height: 16),
             SelectableText(
-              ocr.lines.join('\n'),
+              ocr.rows.join('\n'),
               style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
             ),
           ],

@@ -86,7 +86,14 @@ class RuleBasedExtractor implements TransactionExtractor {
     for (final rawLine in text.split(RegExp(r'[\r\n]+'))) {
       final line = rawLine.trim();
       if (line.length < 2) continue;
-      if (AmountParser.parse(line) == null) continue;
+
+      // Test the REPAIRED line. Checking the raw one drops every row whose
+      // amount OCR mangled ("5oo"), which is the worst possible failure here:
+      // a debt silently missing from the page rather than flagged for review.
+      final probe = source == TxSource.cameraScan
+          ? AmountParser.repairOcrDigits(line)
+          : line;
+      if (AmountParser.parse(probe) == null) continue;
 
       final draft = _extractLine(line, knownCustomers, source);
       // A row with an amount but no recoverable name is still worth showing —
@@ -98,11 +105,18 @@ class RuleBasedExtractor implements TransactionExtractor {
   }
 
   TransactionDraft _extractLine(
-    String text,
+    String rawText,
     List<String> knownCustomers,
     TxSource source,
   ) {
     final warnings = <String>[];
+
+    // Handwriting OCR reliably confuses o/0 and l/1, so "5oo" arrives where
+    // "500" was written. Repair only on the scan path — speech never produces
+    // that failure, and the repair should not run where it cannot help.
+    final text = source == TxSource.cameraScan
+        ? AmountParser.repairOcrDigits(rawText)
+        : rawText;
 
     final amount = AmountParser.parse(text);
     if (amount == null) warnings.add('No amount detected');
@@ -125,7 +139,11 @@ class RuleBasedExtractor implements TransactionExtractor {
       item: item,
       direction: direction,
       source: source,
-      rawInput: text.trim(),
+      // The ORIGINAL text, not the repaired one: "From the page" should show
+      // what the phone actually read, so a repair is visible rather than
+      // hidden. Seeing "5oo" next to an amount of 500 is reassuring; seeing a
+      // silently rewritten line is not.
+      rawInput: rawText.trim(),
       confidence: confidence,
       warnings: warnings,
     );

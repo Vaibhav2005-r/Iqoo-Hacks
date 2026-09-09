@@ -15,7 +15,7 @@
          for hot reload only. -->
 
     <application
-        android:label="khatasetu"
+        android:label="KhataSetu"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

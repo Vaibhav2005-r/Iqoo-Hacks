@@ -88,18 +88,21 @@ def patch_gradle() -> bool:
 
 PROGUARD_RULES = """# KhataSetu R8/ProGuard rules.
 #
-# google_mlkit_text_recognition's Java code references every script
-# recogniser (Latin, Chinese, Japanese, Korean, Devanagari), but we depend on
-# only the Devanagari artefact to keep the APK small. R8 then fails the
-# release build on the classes that are not there.
+# google_mlkit_text_recognition's Java code references every script recogniser,
+# but the plugin bundles only Latin and this app additionally declares
+# Devanagari (see build.gradle.kts). Chinese, Japanese and Korean are genuinely
+# absent, and R8 fails the release build on them.
 #
-# Suppressing the warnings is correct rather than a workaround: those code
-# paths are unreachable because the app never asks for those scripts. The
-# alternative is shipping four more recognition models we will never load.
+# Suppressing those three is correct: the app never asks for those scripts, so
+# the code paths are unreachable, and the alternative is shipping three
+# recognition models it will never load.
+#
+# Devanagari is deliberately NOT in this list. It is a real dependency, and
+# silencing it here is what hid a NoClassDefFoundError that crashed the scan
+# flow at runtime while the build stayed green.
 -dontwarn com.google.mlkit.vision.text.chinese.**
 -dontwarn com.google.mlkit.vision.text.japanese.**
 -dontwarn com.google.mlkit.vision.text.korean.**
--dontwarn com.google.mlkit.vision.text.devanagari.**
 
 # Keep the ML Kit entry points the plugin reflects over.
 -keep class com.google.mlkit.** { *; }
@@ -207,12 +210,89 @@ def patch_release_manifest() -> bool:
     return True
 
 
+MLKIT_DEPENDENCIES = """
+dependencies {
+    // The google_mlkit_text_recognition plugin bundles ONLY the Latin
+    // recogniser. Every other script is an opt-in artefact that the app must
+    // declare itself, and asking for one that is absent is not a build error —
+    // it is a NoClassDefFoundError the moment a scan is attempted.
+    //
+    // KhataSetu reads Hindi khata pages, so it needs Devanagari. This line is
+    // the difference between the scan flow working and the app crashing to the
+    // launcher.
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+}
+"""
+
+
+def patch_mlkit_dependency() -> bool:
+    """Add the Devanagari recogniser artefact, which the plugin does not."""
+    candidates = [
+        ROOT / "android/app/build.gradle.kts",
+        ROOT / "android/app/build.gradle",
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
+        print("  ! app build file not found")
+        return False
+
+    text = path.read_text()
+    if "text-recognition-devanagari" in text:
+        print("  = ML Kit Devanagari dependency already present")
+        return True
+
+    if path.suffix == ".kts":
+        addition = MLKIT_DEPENDENCIES
+    else:
+        addition = MLKIT_DEPENDENCIES.replace(
+            'implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")',
+            "implementation 'com.google.mlkit:text-recognition-devanagari:16.0.1'",
+        )
+
+    anchor = "flutter {"
+    if anchor not in text:
+        print("  ! could not find the flutter block to anchor to")
+        return False
+
+    path.write_text(text.replace(anchor, addition.strip() + "\n\n" + anchor, 1))
+    print(f"  + ML Kit Devanagari recogniser added to {path.name}")
+    return True
+
+
+def patch_app_label() -> bool:
+    """Set the launcher label.
+
+    flutter create derives it from the project name, so it shows as
+    "khatasetu" in the launcher and in system permission dialogs.
+    """
+    path = ROOT / "android/app/src/main/AndroidManifest.xml"
+    if not path.exists():
+        print("  ! manifest not found")
+        return False
+
+    text = path.read_text()
+    if 'android:label="KhataSetu"' in text:
+        print("  = app label already set")
+        return True
+
+    updated = re.sub(r'android:label="[^"]*"', 'android:label="KhataSetu"', text, count=1)
+    if updated == text:
+        print("  ! no android:label attribute found")
+        return False
+
+    path.write_text(updated)
+    print("  + app label set to KhataSetu")
+    return True
+
+
 def main() -> int:
     print("Configuring Android project...")
     ok = patch_manifest()
     ok = patch_gradle() and ok
     ok = patch_proguard() and ok
     ok = patch_release_manifest() and ok
+    ok = patch_mlkit_dependency() and ok
+    ok = patch_app_label() and ok
     if not ok:
         print("\nSome steps did not apply. See docs/ANDROID.md to do them by hand.")
         return 1

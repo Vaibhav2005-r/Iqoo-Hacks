@@ -7,12 +7,38 @@
 class AmountParser {
   const AmountParser._();
 
-  /// Devanagari digits ० through ९.
-  static const _devanagariDigits = {
-    '०': '0', '१': '1', '२': '2', '३': '3',
-    '४': '4', '५': '5', '६': '6', '७': '7',
-    '८': '8', '९': '9',
-  };
+  /// Code points of the digit-zero in every Indic and Arabic-Indic block we
+  /// might see. Digits are contiguous from each base, so `base + n` is n.
+  ///
+  /// Devanagari alone is not enough. ML Kit's Indic recogniser will happily
+  /// return a BENGALI digit zero (U+09E6) for a zero written on a Hindi page —
+  /// observed on a real scan, where "500" came back as "5\u09E6\u09E6" and
+  /// parsed as 5, because the tokeniser stripped the unrecognised characters
+  /// as punctuation. Silently reading 500 rupees as 5 is about the worst
+  /// failure this app could have, so every nearby block is handled.
+  static const _digitZeroBases = <int>[
+    0x0660, // Arabic-Indic
+    0x06F0, // Extended Arabic-Indic
+    0x0966, // Devanagari
+    0x09E6, // Bengali
+    0x0A66, // Gurmukhi
+    0x0AE6, // Gujarati
+    0x0B66, // Oriya
+    0x0BE6, // Tamil
+    0x0C66, // Telugu
+    0x0CE6, // Kannada
+    0x0D66, // Malayalam
+  ];
+
+  /// Maps one code unit to an ASCII digit, or null if it is not a digit.
+  static String? _asciiDigit(int codeUnit) {
+    for (final base in _digitZeroBases) {
+      if (codeUnit >= base && codeUnit <= base + 9) {
+        return String.fromCharCode(0x30 + (codeUnit - base));
+      }
+    }
+    return null;
+  }
 
   /// Units and tens. Romanised spellings are deliberately generous — ASR and
   /// shopkeepers both spell these many ways.
@@ -69,16 +95,71 @@ class AmountParser {
     'रुपया', 'रु',
   };
 
+  /// Characters OCR routinely confuses with digits on handwritten pages.
+  static const _ocrDigitConfusions = {
+    'o': '0', 'O': '0', 'D': '0', 'Q': '0',
+    'l': '1', 'I': '1', '|': '1', 'i': '1',
+    'S': '5', 's': '5',
+    'B': '8',
+    'Z': '2', 'z': '2',
+    'G': '6',
+  };
+
+  /// Repairs number-shaped tokens mangled by OCR: "5oo" -> "500", "25o" -> 250.
+  ///
+  /// Only applied to a token that is ALREADY mostly a number — it must consist
+  /// solely of digits and confusable letters, and contain at least one real
+  /// digit. That guard is what stops it turning "oil" into "011" or a customer
+  /// named "Sisi" into "5i5i"; a word with no digit in it is never touched.
+  static String repairOcrDigits(String input) {
+    // Rewrite each run of non-space characters in place. Dart's String.split
+    // discards the separator even when it is a capture group, so splitting on
+    // whitespace and rejoining would silently eat the spacing that the row
+    // grouping just worked to produce.
+    return input.replaceAllMapped(
+      RegExp(r'\S+'),
+      (m) => _repairToken(m[0]!),
+    );
+  }
+
+  static String _repairToken(String token) {
+    // Keep any trailing punctuation out of the decision.
+    final match = RegExp(r'^([^\w]*)(.*?)([^\w]*)$').firstMatch(token);
+    final lead = match?.group(1) ?? '';
+    final core = match?.group(2) ?? token;
+    final trail = match?.group(3) ?? '';
+    if (core.isEmpty) return token;
+
+    var hasRealDigit = false;
+    for (final ch in core.split('')) {
+      if (RegExp(r'[0-9]').hasMatch(ch)) {
+        hasRealDigit = true;
+      } else if (!_ocrDigitConfusions.containsKey(ch)) {
+        // A character that is neither a digit nor a known confusion means
+        // this is a word, not a mangled number. Leave it alone.
+        return token;
+      }
+    }
+    if (!hasRealDigit) return token;
+
+    final repaired = core
+        .split('')
+        .map((ch) => _ocrDigitConfusions[ch] ?? ch)
+        .join();
+    return '$lead$repaired$trail';
+  }
+
   /// Normalises Devanagari digits to ASCII and removes digit-grouping commas
   /// so a single regex handles both scripts.
   ///
   /// The comma pass runs in a loop because Indian grouping is irregular
   /// (1,23,456) and one replace pass cannot handle adjacent groups.
   static String normaliseDigits(String input) {
-    var out = input;
-    _devanagariDigits.forEach((dev, ascii) {
-      out = out.replaceAll(dev, ascii);
-    });
+    final buffer = StringBuffer();
+    for (final unit in input.codeUnits) {
+      buffer.write(_asciiDigit(unit) ?? String.fromCharCode(unit));
+    }
+    var out = buffer.toString();
 
     final groupComma = RegExp(r'(\d),(\d)');
     while (groupComma.hasMatch(out)) {

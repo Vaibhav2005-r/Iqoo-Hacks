@@ -17,6 +17,20 @@ void main() {
       expect(AmountParser.parse('५००'), 500);
     });
 
+    test('Bengali digits, which ML Kit really does return for Hindi pages', () {
+      // Observed on a real scan: "500" came back as 5 + two U+09E6, and the
+      // tokeniser stripped them, turning 500 rupees into 5.
+      expect(AmountParser.parse('5\u09E6\u09E6'), 500);
+      expect(AmountParser.parse('25\u09E6  chawal udhar'), 250);
+      expect(AmountParser.parse('Anil bhai  12\u09E6\u09E6  udhar'), 1200);
+    });
+
+    test('other Indic digit blocks normalise too', () {
+      expect(AmountParser.parse('\u0AE7\u0AE6\u0AE6'), 100); // Gujarati 100
+      expect(AmountParser.parse('\u0C69\u0C66'), 30);          // Telugu 30
+      expect(AmountParser.parse('\u0669'), 9);                  // Arabic-Indic 9
+    });
+
     test('digit with a Hindi multiplier', () {
       expect(AmountParser.parse('5 sau'), 500);
       expect(AmountParser.parse('2 hazaar'), 2000);
@@ -94,6 +108,8 @@ void main() {
     });
   });
 
+  _ocrRepairTests();
+
   group('tokenise', () {
     test('keeps Devanagari, drops punctuation', () {
       expect(
@@ -101,6 +117,46 @@ void main() {
         ['sharma', 'ji', '500', 'ka', 'udhar'],
       );
       expect(AmountParser.tokenise('पांच सौ'), ['पांच', 'सौ']);
+    });
+  });
+}
+
+void _ocrRepairTests() {
+  group('OCR digit repair', () {
+    test('repairs letters that OCR substitutes for digits', () {
+      expect(AmountParser.repairOcrDigits('5oo'), '500');
+      expect(AmountParser.repairOcrDigits('25o'), '250');
+      expect(AmountParser.repairOcrDigits('l5o'), '150');
+    });
+
+    test('leaves words alone', () {
+      // No real digit in the token, so nothing is a number to repair.
+      expect(AmountParser.repairOcrDigits('oil'), 'oil');
+      expect(AmountParser.repairOcrDigits('Sharma'), 'Sharma');
+      expect(AmountParser.repairOcrDigits('Priya'), 'Priya');
+      expect(AmountParser.repairOcrDigits('sau'), 'sau');
+    });
+
+    test('leaves mixed word-and-digit tokens alone', () {
+      // "a1" contains a real digit but also a non-confusable letter, so it is
+      // a word, not a mangled number.
+      expect(AmountParser.repairOcrDigits('a1'), 'a1');
+      expect(AmountParser.repairOcrDigits('udhar500'), 'udhar500');
+    });
+
+    test('preserves surrounding text and spacing', () {
+      expect(
+        AmountParser.repairOcrDigits('Sharma ji  5oo  udhar'),
+        'Sharma ji  500  udhar',
+      );
+    });
+
+    test('repaired text then parses to the right amount', () {
+      expect(AmountParser.parse(AmountParser.repairOcrDigits('5oo')), 500);
+      expect(
+        AmountParser.parse(AmountParser.repairOcrDigits('Sharma ji 25o udhar')),
+        250,
+      );
     });
   });
 }

@@ -48,6 +48,18 @@ kotlin {
     }
 }
 
+dependencies {
+    // The google_mlkit_text_recognition plugin bundles ONLY the Latin
+    // recogniser. Every other script is an opt-in artefact that the app must
+    // declare itself, and asking for one that is absent is not a build error —
+    // it is a NoClassDefFoundError the moment a scan is attempted.
+    //
+    // KhataSetu reads Hindi khata pages, so it needs Devanagari. This line is
+    // the difference between the scan flow working and the app crashing to the
+    // launcher.
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+}
+
 flutter {
     source = "../.."
 }

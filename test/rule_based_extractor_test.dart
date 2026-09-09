@@ -147,6 +147,42 @@ void main() {
       expect(drafts.single.source, TxSource.cameraScan);
     });
 
+    test('rows whose amount OCR mangled are repaired, not dropped', () async {
+      // The guard used to test the raw line, so "5oo" parsed as no amount and
+      // the whole row vanished — a debt silently lost off the page.
+      final drafts = await extractor.extractBatch(
+        'Sharma ji  5oo  udhar\n'
+        '25o  chawal udhar\n'
+        'Anil bhai  12oo  udhar',
+        source: TxSource.cameraScan,
+      );
+      expect(drafts.length, 3);
+      expect(drafts[0].amount, 500);
+      expect(drafts[1].amount, 250);
+      expect(drafts[2].amount, 1200);
+    });
+
+    test('the displayed source text stays as OCR actually read it', () async {
+      // Showing the repaired text would hide the correction; "5oo" next to an
+      // amount of 500 is what makes the repair legible.
+      final drafts = await extractor.extractBatch(
+        'Sharma ji  5oo  udhar',
+        source: TxSource.cameraScan,
+      );
+      expect(drafts.single.rawInput, 'Sharma ji  5oo  udhar');
+      expect(drafts.single.amount, 500);
+    });
+
+    test('voice input is not digit-repaired', () async {
+      // Speech never produces "5oo", and running the repair there could only
+      // corrupt a genuine transcript.
+      final draft = await extractor.extractSingle(
+        'Sharma ko 5oo diya',
+        source: TxSource.voice,
+      );
+      expect(draft.amount, isNot(500));
+    });
+
     test('a row with an amount but no name is kept for the user to fix', () async {
       // Dropping it would silently lose a real debt off the page.
       final drafts = await extractor.extractBatch('500 udhar');

@@ -60,12 +60,14 @@ flutter build apk --release  # ~84 MB, or --split-per-abi for arm64 only
 Flutter 3.47.2 · Dart 3.13.2 · Android SDK 36.0.0 · Gradle 9.3.1 · JDK 25.
 
 - `flutter analyze` — no issues
-- `flutter test` — 61 passing
+- `flutter test` — 71 passing
 - `flutter build apk --release` — builds, no `INTERNET` permission
+- Run on an Android 16 emulator (Pixel 7, arm64): onboarding, voice-path
+  extraction, ledger, balances, trust score, Credit Passport with QR, and
+  camera OCR all exercised end to end
 
-Not yet verified: **runtime behaviour on a physical device.** Nothing here has
-been run on an Android phone. The first thing to do on the demo device is a
-scan and a save.
+Not yet verified: **a physical phone**, and the voice path with a real whisper
+model (the typed input path shares everything downstream of the transcript).
 
 ---
 
@@ -198,9 +200,15 @@ it.
   answer is the confirmation card: every transcription is shown verbatim as
   "what I heard" and every field is editable, so a mishearing is a one-tap fix
   rather than a wrong ledger entry.
-- **Handwriting OCR makes mistakes.** Scanned rows arrive unchecked when the
-  pipeline is unsure, the raw OCR text stays one tap away, and nothing is saved
-  without review.
+- **Handwriting OCR makes mistakes**, and in more interesting ways than
+  expected. On a real scan, ML Kit's Indic recogniser returned **Bengali digit
+  zeros** (U+09E6) for zeros written on a Hindi page — so "500" arrived as
+  `5\u09E6\u09E6`, and the tokeniser stripped the unfamiliar characters and
+  read it as 5. `AmountParser` now normalises every Indic and Arabic-Indic
+  digit block, not just Devanagari. It also read an `8` as Bengali `৪`, which
+  no amount of parsing can fix — that one is what the correction UI is for.
+  Scanned rows arrive unchecked when the pipeline is unsure, the raw OCR text
+  stays one tap away, and nothing is saved without review.
 - **No encryption at rest.** SQLite, unencrypted. A real deployment needs
   SQLCipher; that is a roadmap item, not something to rush under time pressure.
 
