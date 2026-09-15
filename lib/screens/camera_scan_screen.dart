@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -44,6 +45,16 @@ class _CameraScanScreenState extends State<CameraScanScreen> {
 
   final List<TransactionDraft> _drafts = [];
   final Set<int> _selected = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Start loading the recognition model now, while the shopkeeper is still
+    // choosing a photo. ML Kit loads it on first use, so without this the
+    // first scan after a fresh install pays the whole cold cost on screen.
+    // Fire and forget: warmUp never throws and never blocks the UI.
+    unawaited(_ocr.warmUp());
+  }
 
   @override
   void dispose() {

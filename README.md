@@ -60,7 +60,7 @@ flutter build apk --release  # ~84 MB, or --split-per-abi for arm64 only
 Flutter 3.47.2 · Dart 3.13.2 · Android SDK 36.0.0 · Gradle 9.3.1 · JDK 25.
 
 - `flutter analyze` — no issues
-- `flutter test` — 71 passing
+- `flutter test` — 74 passing
 - `flutter build apk --release` — builds, no `INTERNET` permission
 - Run on an Android 16 emulator (Pixel 7, arm64): onboarding, voice-path
   extraction, ledger, balances, trust score, Credit Passport with QR, and

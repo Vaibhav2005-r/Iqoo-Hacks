@@ -108,6 +108,29 @@ actually need converts a build error into a runtime crash.
 If you ever add another script, add both the artefact and its removal from the
 `-dontwarn` list.
 
+## 6. Cold-start model loading
+
+ML Kit loads its recognition model on the first `processImage`, not when the
+`TextRecognizer` is constructed. Measured on the emulator with a fresh
+install:
+
+| First scan | Time |
+|---|---|
+| Without warm-up | **18.8 s** |
+| With warm-up | **1.3 s** |
+
+`CameraScanScreen.initState` calls `OcrService.warmUp()`, which runs a 109-byte
+embedded PNG through the pipeline. By the time the shopkeeper has chosen a
+photo, the model is resident.
+
+The warm-up is fire-and-forget and swallows its own errors — a failed warm-up
+must never stop a real scan. That also means a broken warm-up fails *silently*,
+with the cold cost quietly returning as the only symptom, which is why
+`test/ocr_warmup_test.dart` asserts the embedded PNG still decodes.
+
+The benefit depends on the user taking a moment to pick a photo. Someone who
+picks instantly still pays part of the load.
+
 ## Which manifest wins
 
 | Variant | INTERNET | Why |

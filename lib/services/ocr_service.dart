@@ -1,6 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 /// Raw text lifted off a khata page, kept line-structured.
@@ -48,6 +53,51 @@ class OcrService {
   TextRecognizer get _instance => _recognizer ??= TextRecognizer(
         script: TextRecognitionScript.devanagiri,
       );
+
+  bool _warmedUp = false;
+
+  /// A 64x64 greyscale PNG with a couple of dark bars. Content barely matters
+  /// — it exists only to give [warmUp] something valid to run through the
+  /// pipeline — but bars beat a blank field, which a detector may short
+  /// circuit on without ever loading the model.
+  @visibleForTesting
+  static const warmUpPngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAAAAACPAi4CAAAANElEQVR42u3TsREA'
+      'MAjEsN9/aVghOTqQB1Dn1LAAAIB1QD4D7AS8AAC8zQS4AXgBAAAAqgEzF3NEtA7g'
+      'ZQAAAABJRU5ErkJggg==';
+  /// Loads the recognition model before the user needs it.
+  ///
+  /// ML Kit loads its model on first `processImage`, not at construction, so
+  /// the first real scan on a fresh install pays the whole cost: measured at
+  /// **18.8 s** on an emulator, against 1.4 s once warm. Running a throwaway
+  /// recognition while the shopkeeper is still choosing a photo moves that
+  /// off the critical path entirely.
+  ///
+  /// Best-effort and non-blocking by design. Any failure is swallowed: a
+  /// warm-up that does not work must never stop a real scan from being tried,
+  /// and the worst case is simply the cold cost we already have today.
+  Future<void> warmUp() async {
+    if (_warmedUp) return;
+    _warmedUp = true;
+
+    File? file;
+    try {
+      final dir = await getTemporaryDirectory();
+      file = File(p.join(dir.path, 'ocr_warmup.png'));
+      await file.writeAsBytes(base64Decode(warmUpPngBase64));
+      await _instance.processImage(InputImage.fromFilePath(file.path));
+    } on Object catch (_) {
+      // Deliberately ignored - see above.
+    } finally {
+      if (file != null && file.existsSync()) {
+        try {
+          await file.delete();
+        } on Object catch (_) {
+          // Temp file; the OS will reclaim it.
+        }
+      }
+    }
+  }
 
   Future<OcrResult> recognise(String imagePath) async {
     final file = File(imagePath);
@@ -127,6 +177,7 @@ class OcrService {
   Future<void> dispose() async {
     await _recognizer?.close();
     _recognizer = null;
+    _warmedUp = false;
   }
 }
 
