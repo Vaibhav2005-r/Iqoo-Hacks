@@ -8,6 +8,14 @@
 # Reverse it with: scripts/disable_native_ai.sh
 set -euo pipefail
 
+# --asr-only turns on whisper.cpp but NOT llama.cpp. Prefer it: whisper-tiny
+# is ~75 MB against ~1.5 GB for Gemma, and fllama is a git dependency with a
+# heavier native build, so a problem there should not cost you speech too.
+ASR_ONLY=0
+if [ "${1:-}" = "--asr-only" ]; then
+  ASR_ONLY=1
+fi
+
 cd "$(dirname "$0")/.."
 BACKUP="lib/services/native_ai_bindings.dart.rules-only"
 
@@ -17,21 +25,30 @@ if [ ! -f "$BACKUP" ]; then
 fi
 
 mkdir -p lib/native_ai
-cp native_ai/fllama_extractor.dart    lib/native_ai/
 cp native_ai/whisper_asr_service.dart lib/native_ai/
-cp native_ai/native_ai_bindings.dart  lib/services/native_ai_bindings.dart
-echo "Copied native implementations into lib/"
+if [ "$ASR_ONLY" = "1" ]; then
+  cp native_ai/native_ai_bindings_asr_only.dart lib/services/native_ai_bindings.dart
+  echo "Copied whisper.cpp into lib/ (speech only)"
+else
+  cp native_ai/fllama_extractor.dart   lib/native_ai/
+  cp native_ai/native_ai_bindings.dart lib/services/native_ai_bindings.dart
+  echo "Copied whisper.cpp and llama.cpp into lib/"
+fi
 
-python3 - <<'PY'
+ASR_ONLY=$ASR_ONLY python3 - <<'PY'
+import os
 import pathlib
 
-TARGETS = [
-    "  # fllama:",
-    "  #   git:",
-    "  #     url: https://github.com/Telosnex/fllama.git",
-    "  #     ref: main",
-    "  # whisper_flutter_new: ^1.0.1",
-]
+ASR_ONLY = os.environ.get("ASR_ONLY") == "1"
+
+TARGETS = ["  # whisper_flutter_new: ^1.0.1"]
+if not ASR_ONLY:
+    TARGETS += [
+        "  # fllama:",
+        "  #   git:",
+        "  #     url: https://github.com/Telosnex/fllama.git",
+        "  #     ref: main",
+    ]
 
 path = pathlib.Path("pubspec.yaml")
 lines = path.read_text().splitlines(keepends=True)

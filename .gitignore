@@ -28,6 +28,9 @@ android/app/release/
 # macOS
 .DS_Store
 
+# Backup written by scripts/enable_native_ai.sh when it swaps the bindings.
+lib/services/native_ai_bindings.dart.rules-only
+
 # On-device model weights are adb-pushed to the phone, never committed.
 # See docs/MODELS.md — these are multi-GB files.
 assets/models/*

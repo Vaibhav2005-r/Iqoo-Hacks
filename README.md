@@ -60,14 +60,21 @@ flutter build apk --release  # ~84 MB, or --split-per-abi for arm64 only
 Flutter 3.47.2 · Dart 3.13.2 · Android SDK 36.0.0 · Gradle 9.3.1 · JDK 25.
 
 - `flutter analyze` — no issues
-- `flutter test` — 74 passing
+- `flutter test` — 79 passing
 - `flutter build apk --release` — builds, no `INTERNET` permission
 - Run on an Android 16 emulator (Pixel 7, arm64): onboarding, voice-path
   extraction, ledger, balances, trust score, Credit Passport with QR, and
   camera OCR all exercised end to end
 
-Not yet verified: **a physical phone**, and the voice path with a real whisper
-model (the typed input path shares everything downstream of the transcript).
+whisper.cpp runs on-device: `libwhisper.so` is in the APK, the model loads
+from adb-pushed storage, and real inference was observed (7.8 s for a ~2 s clip
+on the emulator).
+
+Not yet verified: **a physical phone**, and **transcription accuracy on real
+Hindi speech** — the emulator has no usable microphone input, so only the
+silence path has been exercised end to end. **Whisper latency on the emulator
+is poor** (a 6-second clip took well over a minute); a flagship phone should be
+far faster, but measure it before relying on it.
 
 ---
 
@@ -104,8 +111,13 @@ copied in by a script. The app always compiles and always runs end-to-end:
 
 | | Extraction | Speech |
 |---|---|---|
-| **Default** | `RuleBasedExtractor` — deterministic, on-device, zero deps | falls back to typed input |
-| **Native enabled** | Gemma-2B GGUF via llama.cpp | whisper-tiny via whisper.cpp |
+| **Currently enabled** | `RuleBasedExtractor` — deterministic, on-device, zero deps | **whisper-tiny via whisper.cpp** |
+| **Still off** | Gemma-2B GGUF via llama.cpp | — |
+
+Speech is **on** and verified running on-device; the LLM is not. They are
+independent on purpose, and `./scripts/enable_native_ai.sh --asr-only` turns on
+only the cheaper, higher-value half (whisper-tiny is ~75 MB against ~1.5 GB for
+Gemma, and `fllama` is a git dependency with a heavier native build).
 
 `AiRuntime` chooses at startup and degrades at request time: if the LLM returns
 malformed JSON, times out, or drops a field, the deterministic result fills the

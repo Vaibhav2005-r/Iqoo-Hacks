@@ -14,7 +14,28 @@ class AsrResult {
     this.detectedLanguage,
   });
 
-  bool get isEmpty => text.trim().isEmpty;
+  /// True when there is nothing usable here.
+  ///
+  /// Whisper does not return an empty string for silence or background noise —
+  /// it emits bracketed non-speech tokens like `(X2)`, `[BLANK_AUDIO]` or
+  /// `[Music]`. Observed on-device: recording two seconds of nothing produced
+  /// "(X2)". Passing that through as a transcript would show a shopkeeper a
+  /// meaningless token and then an entry with no amount and no name, when the
+  /// honest answer is "I didn't hear anything".
+  bool get isEmpty => looksLikeNonSpeech(text);
+
+  /// Whether a transcript carries no actual words.
+  static bool looksLikeNonSpeech(String raw) {
+    final stripped = raw
+        // Drop whisper's bracketed/parenthesised annotations.
+        .replaceAll(RegExp(r'\[[^\]]*\]'), ' ')
+        .replaceAll(RegExp(r'\([^)]*\)'), ' ')
+        // ...and the musical-note markers it uses for audio it reads as music.
+        .replaceAll(RegExp(r'[\u266A\u266B\u2669\u266C]'), ' ')
+        // Anything left that is punctuation or whitespace is not a word.
+        .replaceAll(RegExp(r'[\s.,!?;:\-_*~"\u0027]'), '');
+    return stripped.isEmpty;
+  }
 }
 
 /// On-device speech-to-text.

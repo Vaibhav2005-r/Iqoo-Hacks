@@ -50,7 +50,7 @@ dependencies:
   #   git:
   #     url: https://github.com/Telosnex/fllama.git
   #     ref: main
-  # whisper_flutter_new: ^1.0.1
+  whisper_flutter_new: ^1.0.1
   # --------------------------------------------------------------------------
 
 dev_dependencies:

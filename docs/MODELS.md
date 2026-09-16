@@ -39,12 +39,29 @@ PKG=com.caffeinatedcompilers.khatasetu
 DEST=/sdcard/Android/data/$PKG/files/models
 
 adb shell mkdir -p $DEST
-adb push gemma-2b-it-q4_k_m.gguf $DEST/
 adb push ggml-tiny.bin $DEST/
+adb push gemma-2b-it-q4_k_m.gguf $DEST/   # only if you enabled the LLM too
+
+# REQUIRED. See below.
+adb shell chmod 777 $DEST
 adb shell ls -lh $DEST
 ```
 
 The push takes a few minutes over USB 2. Do it well before you need it.
+
+### Don't skip the chmod
+
+`adb shell mkdir` creates the directory owned by **shell**, mode `drwxrws---`
+— no permissions for "other". The app runs as its own uid, so it cannot
+traverse into that directory and the model is invisible to it, *even though
+the file inside is world-readable*.
+
+The symptom is silent and misleading: the app shows "Speech model not loaded",
+exactly as if you had never pushed the file at all. This cost real debugging
+time; `chmod 777` on the directory fixes it.
+
+If the app has already created `files/models/` itself, the directory is owned
+by the app and pushing into it needs no chmod. Doing it anyway is harmless.
 
 ## Checking
 
