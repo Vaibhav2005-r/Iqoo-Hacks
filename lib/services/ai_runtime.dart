@@ -3,6 +3,7 @@ import 'asr/asr_service.dart';
 import 'extraction/transaction_draft.dart';
 import 'llm/rule_based_extractor.dart';
 import 'llm/transaction_extractor.dart';
+import 'model_manager.dart';
 import 'native_ai_bindings.dart';
 
 /// Chooses which on-device engines to run, and degrades instead of failing.
@@ -27,8 +28,20 @@ class AiRuntime {
   TransactionExtractor? _nativeExtractor;
   AsrService? _asr;
   bool _initialised = false;
+  bool _preparing = false;
+  Future<void>? _ready;
 
   bool get isInitialised => _initialised;
+
+  /// True while a bundled model is still being copied out of the APK.
+  ///
+  /// Copying whisper out of the asset bundle takes real time — 27 s measured
+  /// on an emulator for 74 MB — so startup does not wait for it. The voice
+  /// screen shows this instead of claiming the model is simply missing.
+  bool get isPreparing => _preparing;
+
+  /// Completes once models are installed and engines chosen. Never throws.
+  Future<void> get ready => _ready ?? Future<void>.value();
 
   /// True when a real LLM is loaded, not just the rule engine.
   bool get hasNativeLlm => _nativeExtractor != null;
@@ -43,11 +56,28 @@ class AiRuntime {
 
   String get asrEngineName => _asr?.engineName ?? 'Not available';
 
-  Future<void> initialise() async {
+  Future<void> initialise() {
+    return _ready ??= _initialise();
+  }
+
+  Future<void> _initialise() async {
     if (_initialised) return;
     _initialised = true;
+    _preparing = true;
 
-    if (!NativeAiBindings.enabled) return;
+    try {
+      // Anything shipped inside the APK has to reach disk before the engines
+      // look for it.
+      await ModelManager.instance.installBundledModels();
+    } on Object catch (e) {
+      // ignore: avoid_print
+      print('[AiRuntime] bundled model install failed: $e');
+    }
+
+    if (!NativeAiBindings.enabled) {
+      _preparing = false;
+      return;
+    }
 
     // A missing model file or a native crash must not take the app down with
     // it; losing the LLM is survivable, losing the app on stage is not.
@@ -72,6 +102,8 @@ class AiRuntime {
       // ignore: avoid_print
       print('[AiRuntime] ASR unavailable: $e');
     }
+
+    _preparing = false;
   }
 
   /// Extract one entry from an utterance, with the rule engine as a repair

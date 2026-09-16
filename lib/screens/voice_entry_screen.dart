@@ -52,6 +52,20 @@ class _VoiceEntryScreenState extends State<VoiceEntryScreen> {
   Duration _elapsed = Duration.zero;
 
   bool get _asrAvailable => AiRuntime.instance.hasAsr;
+  bool get _asrPreparing => AiRuntime.instance.isPreparing;
+
+  @override
+  void initState() {
+    super.initState();
+    // A bundled model may still be unpacking from the APK on first launch.
+    // Wait for it rather than leaving the mic greyed out with a message that
+    // says the model is missing when it is actually on its way.
+    if (!AiRuntime.instance.hasAsr) {
+      AiRuntime.instance.ready.then((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -315,8 +329,14 @@ class _VoiceEntryScreenState extends State<VoiceEntryScreen> {
           child: OnDeviceBadge(
             label: _asrAvailable
                 ? 'Speech recognised on your phone'
-                : 'Speech model not loaded — tap to check',
-            icon: _asrAvailable ? Icons.mic_none : Icons.mic_off_outlined,
+                : _asrPreparing
+                    ? 'Preparing speech model…'
+                    : 'Speech model not loaded — tap to check',
+            icon: _asrAvailable
+                ? Icons.mic_none
+                : _asrPreparing
+                    ? Icons.hourglass_top
+                    : Icons.mic_off_outlined,
           ),
         ),
       ),

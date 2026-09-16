@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
@@ -33,10 +35,12 @@ class _KhataSetuAppState extends State<KhataSetuApp> {
   /// AiRuntime.initialise() never throws — a missing model degrades the app to
   /// the rule-based extractor rather than blocking startup.
   Future<void> _bootstrap() async {
-    await Future.wait([
-      _controller.load(),
-      AiRuntime.instance.initialise(),
-    ]);
+    // Deliberately NOT awaited: initialise() copies any bundled model out of
+    // the APK, which took 27 s for whisper on an emulator. Blocking the
+    // splash on that would make a first launch look broken. The ledger is all
+    // the app needs to open; the voice screen reports model progress itself.
+    unawaited(AiRuntime.instance.initialise());
+    await _controller.load();
   }
 
   @override

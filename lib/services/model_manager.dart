@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -182,6 +183,45 @@ class ModelManager {
       sizeBytes: size,
       problem: problem,
     );
+  }
+
+  /// Copies any model shipped inside the APK out to the models directory.
+  ///
+  /// Bundling whisper (~74 MB) makes a test build self-contained: no adb, no
+  /// separate push, no directory wiped by the next uninstall. The LLM is NOT
+  /// bundled — at 1.6 GB it would make the APK unusable — so that one is
+  /// still pushed.
+  ///
+  /// Idempotent and best-effort. A model already present on disk is left
+  /// alone, so a newer pushed model always wins over the bundled copy, and a
+  /// build with no bundled asset simply does nothing.
+  Future<void> installBundledModels() async {
+    for (final spec in [asrSpec]) {
+      try {
+        final dest = File(p.join((await modelsDirectory()).path, spec.fileName));
+        if (dest.existsSync() && await dest.length() >= spec.minBytes) continue;
+
+        final data = await rootBundle.load('assets/models/${spec.fileName}');
+        if (data.lengthInBytes < spec.minBytes) continue;
+
+        // Write to a temp name first: an interrupted copy must not leave a
+        // truncated file that looks installed. That exact failure is what
+        // ModelStatus.validate now guards against.
+        final tmp = File('${dest.path}.part');
+        await tmp.writeAsBytes(
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+          flush: true,
+        );
+        await tmp.rename(dest.path);
+        // ignore: avoid_print
+        print('[ModelManager] installed bundled ${spec.fileName}');
+      } on Object catch (e) {
+        // No bundled copy, or no room for it. The app falls back to whatever
+        // is already on disk.
+        // ignore: avoid_print
+        print('[ModelManager] no bundled ${spec.fileName}: $e');
+      }
+    }
   }
 
   Future<ModelStatus> llmStatus() async => _status(llmSpec);

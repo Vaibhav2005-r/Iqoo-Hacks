@@ -62,3 +62,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    # A DIRECTORY, not a filename, on purpose: the model files here are
+    # gitignored (74 MB+), so a fresh clone has only .gitkeep and must still
+    # build. Naming a file that might be absent would break that build.
+    #
+    # Run scripts/bundle_model.sh to put whisper in here before building a
+    # self-contained test APK. Without it the app looks for the model on disk
+    # exactly as before.
+    - assets/models/
