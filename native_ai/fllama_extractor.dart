@@ -13,10 +13,11 @@ import '../services/model_manager.dart';
 /// Lives outside lib/ until `scripts/enable_native_ai.sh` copies it in, so an
 /// NDK/ABI build failure in `fllama` cannot break compilation of the app.
 ///
-/// NOTE: verify this against the `fllama` revision you actually pin — it is a
-/// community package and its API has moved before. The three things to check
-/// are the `OpenAiRequest` field names, the `fllamaChat` callback arity, and
-/// whether `grammar` is honoured on your build.
+/// Verified against the fllama revision pinned in pubspec.yaml: the
+/// `OpenAiRequest` field names and the `fllamaChat` callback arity
+/// (`response, openaiResponseJsonString, done`) both match. `grammar` does
+/// NOT exist on this API — see the note below. Re-check all three if you move
+/// the pin, since this is a git dependency with no version contract.
 class FllamaExtractor implements TransactionExtractor {
   FllamaExtractor({this.contextSize = 2048, this.maxTokens = 256});
 
@@ -31,36 +32,26 @@ class FllamaExtractor implements TransactionExtractor {
   @override
   Future<bool> isAvailable() async {
     final status = await ModelManager.instance.llmStatus();
-    if (!status.exists) return false;
+    // isUsable, not exists: a half-pushed GGUF has a valid header and would
+    // otherwise be handed straight to llama.cpp.
+    if (!status.isUsable) return false;
     _modelPath = status.expectedPath;
     return true;
   }
 
-  /// GBNF grammar pinning the output to exactly the JSON we can parse.
+  /// NOTE: this API has **no grammar field**.
   ///
-  /// Constraining the decoder is strictly better than prompting for JSON and
-  /// hoping: it removes malformed-JSON failures by construction rather than
-  /// catching them afterwards.
-  static const _singleGrammar = r'''
-root   ::= "{" ws "\"customer_name\":" ws string "," ws "\"amount\":" ws number "," ws "\"item\":" ws (string | "null") "," ws "\"direction\":" ws direction ws "}"
-direction ::= "\"CREDIT\"" | "\"PAYMENT\""
-string ::= "\"" ([^"\\] | "\\" ["\\/bfnrt])* "\""
-number ::= [0-9]+ ("." [0-9]+)?
-ws     ::= [ \t\n]*
-''';
-
-  static const _batchGrammar = r'''
-root   ::= "[" ws (entry (ws "," ws entry)*)? ws "]"
-entry  ::= "{" ws "\"customer_name\":" ws string "," ws "\"amount\":" ws number "," ws "\"item\":" ws (string | "null") "," ws "\"direction\":" ws direction ws "}"
-direction ::= "\"CREDIT\"" | "\"PAYMENT\""
-string ::= "\"" ([^"\\] | "\\" ["\\/bfnrt])* "\""
-number ::= [0-9]+ ("." [0-9]+)?
-ws     ::= [ \t\n]*
-''';
+  /// The plan was to pin output with a GBNF grammar, which removes
+  /// malformed-JSON failures by construction. `OpenAiRequest` does not expose
+  /// one (it offers `tools`/`toolChoice` instead), so the defences here are:
+  /// a blunt prompt, greedy decoding, brace-slicing in [_decodeObject] for
+  /// models that wrap JSON in prose, and — the real backstop — [AiRuntime]
+  /// repairing anything still missing from the deterministic extractor.
 
   static const _systemPrompt = '''
 You extract shop ledger transactions from spoken Hindi/English text.
-Output ONLY valid JSON, no prose.
+Output ONLY valid JSON. No prose, no explanation, no markdown code fence.
+Start your reply with { and end it with }.
 "CREDIT" means the shopkeeper gave goods or money on credit (udhar) to the customer.
 "PAYMENT" means the customer paid back money they owed.
 Never invent a customer name that was not mentioned. If a name is not stated, use "".
@@ -76,7 +67,6 @@ Amounts are in rupees. Return only the number, no currency symbol.
     final raw = await _run(
       systemPrompt: _systemPrompt,
       userPrompt: _singlePrompt(text, knownCustomers),
-      grammar: _singleGrammar,
     );
 
     final json = _decodeObject(raw);
@@ -95,7 +85,6 @@ Amounts are in rupees. Return only the number, no currency symbol.
     final raw = await _run(
       systemPrompt: _systemPrompt,
       userPrompt: _batchPrompt(text, knownCustomers),
-      grammar: _batchGrammar,
       // A page holds many rows, so it needs a bigger budget than one utterance.
       maxTokensOverride: 768,
     );
@@ -148,7 +137,6 @@ Amounts are in rupees. Return only the number, no currency symbol.
   Future<String> _run({
     required String systemPrompt,
     required String userPrompt,
-    required String grammar,
     int? maxTokensOverride,
   }) async {
     final modelPath = _modelPath;
@@ -175,7 +163,6 @@ Amounts are in rupees. Return only the number, no currency symbol.
       // llama.cpp on Android is CPU/Vulkan, not the phone's NPU. Offloading
       // is best-effort and silently ignored when no GPU backend is compiled.
       numGpuLayers: 0,
-      grammar: grammar,
     );
 
     await fllamaChat(request, (response, responseJson, done) {

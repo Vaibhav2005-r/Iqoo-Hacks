@@ -47,7 +47,7 @@ if not ASR_ONLY:
         "  # fllama:",
         "  #   git:",
         "  #     url: https://github.com/Telosnex/fllama.git",
-        "  #     ref: main",
+        "  #     ref: f05270b0833371090e6fc76e796061fbc2575226  # pinned; `main` can move under you",
     ]
 
 path = pathlib.Path("pubspec.yaml")

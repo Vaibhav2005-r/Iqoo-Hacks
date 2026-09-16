@@ -63,6 +63,69 @@ These files are excluded from analysis (`analysis_options.yaml`) while they sit
 in `native_ai/`, because their import paths are written for their post-copy
 location. They are only analysed once the enable script has moved them.
 
+## The LLM is off by default, and that is a build-system constraint
+
+`whisper_flutter_new` uses a normal Gradle/NDK build, so having it on costs
+nothing: `flutter test` is unaffected. It ships enabled.
+
+`fllama` is different. It uses Dart's **native assets** hooks, which run for
+*every* target — including the host when you run `flutter test`. Two
+consequences, both measured here:
+
+1. **It breaks `flutter test` on this machine.** The hook builds llama.cpp for
+   macOS via `native_toolchain_cmake`, whose toolchain file is incompatible
+   with CMake 4.x:
+
+   ```
+   CMake Error at native_toolchain_cmake-0.2.7/cmake/ios.toolchain.cmake:668
+     get_filename_component called with incorrect number of arguments
+   ```
+
+   The *Android* build is fine, because Gradle uses the Android SDK's bundled
+   CMake 3.22.1 rather than whatever is on your PATH. Only the host build
+   picks up Homebrew's CMake 4.
+
+2. **Even if it worked, it would compile llama.cpp for macOS on every clean
+   checkout just to run pure-Dart unit tests.** Those tests cover number
+   parsing and scoring. They have no business waiting on a 309-target C++
+   build.
+
+So the default is speech-on, LLM-off, and the LLM is switched on per build:
+
+```bash
+./scripts/enable_native_ai.sh              # both
+./scripts/enable_native_ai.sh --asr-only   # speech only (the default state)
+./scripts/disable_native_ai.sh             # back to rules only
+```
+
+Turn the LLM on when you are building for the device, and run
+`--asr-only` (or `disable`) when you want the test suite back. If you need
+both at once, install a CMake 3.x on the host and put it ahead of Homebrew's
+on PATH.
+
+### What was verified with the LLM enabled
+
+- `fllama` resolves from git at the pinned commit
+- `flutter analyze` clean
+- `flutter build apk --release` succeeds; llama.cpp compiles (309 targets,
+  ~2.5 min) and `libfllama.so` (10.5 MB) is registered as a native asset and
+  lands in the APK
+- The release APK still declares no `INTERNET` permission
+
+Not verified: Gemma actually loading and generating. The model is 1.6 GB and
+the one push attempted here was interrupted — which is how the truncated-model
+bug below was found.
+
+### The API does not match the docs you will find
+
+`OpenAiRequest` has **no `grammar` field**. The GBNF-constrained decoding that
+`native_ai/fllama_extractor.dart` was originally written against does not
+exist; the API offers `tools`/`toolChoice` instead. The extractor now leans on
+a blunt prompt, greedy decoding, brace-slicing, and `AiRuntime` repairing the
+result from the deterministic extractor. `Message(Role.user, text)` and the
+`fllamaChat(request, (response, json, done) {})` callback arity were both
+checked and do match.
+
 ## If the Android build fails
 
 Almost always NDK/ABI. In order:

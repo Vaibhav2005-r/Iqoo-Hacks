@@ -26,7 +26,7 @@ class WhisperAsrService implements AsrService {
   @override
   Future<bool> isAvailable() async {
     final status = await ModelManager.instance.asrStatus();
-    if (!status.exists) return false;
+    if (!status.isUsable) return false;
 
     _whisper ??= Whisper(
       model: model,
