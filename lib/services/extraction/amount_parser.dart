@@ -91,8 +91,11 @@ class AmountParser {
   /// Words that mean "rupees" and carry no numeric value.
   static const currencyWords = {
     'rupee', 'rupees', 'rupaye', 'rupaya', 'rupay', 'rs', 'inr',
-    'रुपये', 'रुपए',
-    'रुपया', 'रु',
+    // Romanisations observed in real whisper-tiny output. Without these the
+    // stray token scores as a customer name — "rupe" was being picked over
+    // "Anilku" because a postposition happened to follow it.
+    'rupe', 'rupai', 'rupaiya', 'rupya',
+    'रुपये', 'रुपए', 'रुपया', 'रु',
   };
 
   /// Characters OCR routinely confuses with digits on handwritten pages.
@@ -177,6 +180,58 @@ class AmountParser {
         .toList();
   }
 
+  /// Splits a token that is really several number words run together.
+  ///
+  /// Whisper reliably glues short words: measured against whisper-tiny on
+  /// Hindi, "chaar sau" came back as "Charso", "do sau ka" as "Dosoka", and
+  /// "paanch sau ka" as "5-Soka". Each is a single token to a whitespace
+  /// tokeniser, so the multiplier is lost and 400 reads as no amount at all.
+  ///
+  /// Segmentation is greedy longest-match and must cover the WHOLE token. A
+  /// partial match is rejected, which is what keeps ordinary words out: a
+  /// customer called "Sonu" tries "so" then fails on "nu" and is left alone,
+  /// and "Charu" fails on "u". Only a token made entirely of number words is
+  /// rewritten.
+  static List<String>? segmentGluedNumber(String token) {
+    if (token.length < 3) return null;
+    // A token that is already a plain number needs no help.
+    if (RegExp(r'^\d+$').hasMatch(token)) return null;
+
+    final parts = <String>[];
+    var i = 0;
+    var sawValue = false;
+
+    while (i < token.length) {
+      String? best;
+      for (var len = token.length - i; len >= 1; len--) {
+        final piece = token.substring(i, i + len);
+        if (_units.containsKey(piece) ||
+            _multipliers.containsKey(piece) ||
+            _fractions.containsKey(piece)) {
+          best = piece;
+          break;
+        }
+        // Trailing glue like the "ka" in "Dosoka" carries no value but is
+        // part of the token.
+        if (_gluedFillers.contains(piece)) {
+          best = piece;
+          break;
+        }
+      }
+      if (best == null) return null; // not fully a number token
+      if (!_gluedFillers.contains(best)) sawValue = true;
+      parts.add(best);
+      i += best.length;
+    }
+
+    // At least two pieces, and at least one that carries a value.
+    if (parts.length < 2 || !sawValue) return null;
+    return parts;
+  }
+
+  /// Particles whisper tends to glue onto the end of a number.
+  static const _gluedFillers = {'ka', 'ke', 'ki', 'ko', 'ne', 'se', 'kaa'};
+
   /// Best-effort amount for a whole utterance. Returns null when nothing
   /// number-shaped is present.
   ///
@@ -195,15 +250,30 @@ class AmountParser {
     final tokens = tokenise(input);
     if (tokens.isEmpty) return null;
 
+    final expanded = expandGluedNumbers(tokens);
     final candidates = <_Candidate>[
-      ..._digitCandidates(tokens),
-      ..._wordCandidates(tokens),
+      ..._digitCandidates(expanded),
+      ..._wordCandidates(expanded),
     ];
     if (candidates.isEmpty) return null;
 
     final adjacent = candidates.where((c) => c.nextToCurrency).toList();
     final pool = adjacent.isNotEmpty ? adjacent : candidates;
     return pool.map((c) => c.value).reduce((a, b) => a > b ? a : b);
+  }
+
+  /// Rewrites any token that is several number words run together.
+  static List<String> expandGluedNumbers(List<String> tokens) {
+    final out = <String>[];
+    for (final t in tokens) {
+      final parts = segmentGluedNumber(t);
+      if (parts == null) {
+        out.add(t);
+      } else {
+        out.addAll(parts);
+      }
+    }
+    return out;
   }
 
   /// Digit-form numbers, applying an adjacent Hindi multiplier ("5 sau" = 500).

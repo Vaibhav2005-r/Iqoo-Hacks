@@ -41,6 +41,8 @@ class RuleBasedExtractor implements TransactionExtractor {
   static const _paymentMarkers = {
     'wapas', 'wapis', 'vapas', 'vapis', 'chukaya', 'chukaye', 'chukta',
     'jama', 'bhugtan', 'laut', 'lauta', 'lautaye',
+    // Spellings seen coming out of whisper-tiny on Hindi.
+    'vaapas', 'waapas', 'vapaas', 'chukai', 'chukaai', 'jamaa',
     'वापस', 'वापिस', 'चुकाया', 'चुकाये', 'जमा', 'भुगतान', 'लौटा', 'लौटाए',
     'paid', 'pay', 'payment', 'repaid', 'repay', 'settled', 'settle',
     'cleared', 'clear', 'returned', 'return',
@@ -73,7 +75,7 @@ class RuleBasedExtractor implements TransactionExtractor {
 
   /// Ergative marker. Marks the NAMED PERSON as the one who acted:
   /// "Ramesh **ne** ... diye" = Ramesh did the giving = a repayment.
-  static const _subjectMarkers = {'ne', 'ने'};
+  static const _subjectMarkers = {'ne', 'neh', 'ने'};
 
   /// Dative marker. Marks the named person as the RECIPIENT:
   /// "Sharma **ko** ... diya" = the shopkeeper gave to Sharma = credit.
