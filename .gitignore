@@ -37,3 +37,6 @@ assets/models/*
 !assets/models/.gitkeep
 *.gguf
 *.bin
+
+# Built artefacts staged for device testing
+dist/

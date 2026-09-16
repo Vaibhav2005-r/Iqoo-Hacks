@@ -13,6 +13,7 @@ import '../state/ledger_controller.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_card.dart';
 import '../widgets/draft_editor.dart';
+import '../widgets/model_status_sheet.dart';
 import '../widgets/on_device_badge.dart';
 
 enum _Stage { idle, recording, transcribing, extracting, review }
@@ -305,11 +306,18 @@ class _VoiceEntryScreenState extends State<VoiceEntryScreen> {
       ),
       const SizedBox(height: 28),
       Center(
-        child: OnDeviceBadge(
-          label: _asrAvailable
-              ? 'Speech recognised on your phone'
-              : 'Speech model not loaded',
-          icon: _asrAvailable ? Icons.mic_none : Icons.mic_off_outlined,
+        // Tappable on purpose: when speech is unavailable the shopkeeper (or
+        // whoever set the phone up) needs to know which file is missing and
+        // where it was expected, not just that something did not load.
+        child: InkWell(
+          onTap: () => ModelStatusSheet.show(context),
+          borderRadius: BorderRadius.circular(20),
+          child: OnDeviceBadge(
+            label: _asrAvailable
+                ? 'Speech recognised on your phone'
+                : 'Speech model not loaded — tap to check',
+            icon: _asrAvailable ? Icons.mic_none : Icons.mic_off_outlined,
+          ),
         ),
       ),
       const SizedBox(height: 32),
