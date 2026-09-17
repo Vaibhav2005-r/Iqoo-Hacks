@@ -221,8 +221,16 @@ it.
   no amount of parsing can fix — that one is what the correction UI is for.
   Scanned rows arrive unchecked when the pipeline is unsure, the raw OCR text
   stays one tap away, and nothing is saved without review.
-- **No encryption at rest.** SQLite, unencrypted. A real deployment needs
-  SQLCipher; that is a roadmap item, not something to rush under time pressure.
+- **No encryption at rest.** SQLite, unencrypted. SQLCipher was implemented
+  and then reverted: the keystore reads it depends on took 4.6 s when they
+  worked and timed out when they did not, and a failed key read leaves only
+  two options — regenerate the key and destroy the ledger, or refuse to open
+  it. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for what it would take to
+  land safely. Still the right thing to do; not something to rush.
+- **No LLM.** Gemma, Llama-3.2-1B and Qwen2.5-0.5B were all benchmarked
+  against the rule-based extractor on the same 13 real cases. All three
+  scored worse, at 469 MB to 1.6 GB of storage — see
+  [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
 
 ## Not built (deliberately out of scope)
 
