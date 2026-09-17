@@ -26,6 +26,18 @@ Then open http://127.0.0.1:8765. The camera needs HTTPS or localhost — a
 For testing without a phone, deep-link a payload:
 `index.html?p=<url-encoded JSON>`
 
+To test the **scanner** without a phone, make a real passport QR and point a
+webcam at it on screen:
+
+```bash
+brew install qrencode
+PAYLOAD='{"v":1,"shop":"Sharma General Store","owner":"Ramesh Sharma",...}'
+printf '%s' "$PAYLOAD" | qrencode -l M -s 8 -o passport.png
+```
+
+`-l M` matches the error-correction level the app's passport widget uses, so
+the generated code has the same density as a real one.
+
 ## Deploying
 
 `render.yaml` at the repo root defines it as a Render static site
