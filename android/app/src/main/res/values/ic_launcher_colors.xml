@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppTheme.seed - the same deep indigo the app itself uses. -->
+    <color name="ic_launcher_background">#1B4965</color>
+    <!-- Scaffold background, so the launch window matches the first frame
+         Flutter draws and there is no flash of a different colour. -->
+    <color name="launch_background">#FAF8F5</color>
+</resources>

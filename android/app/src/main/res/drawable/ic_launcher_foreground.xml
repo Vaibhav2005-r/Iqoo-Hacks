@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  KhataSetu mark: an open ledger with entry rules.
+
+  Drawn on a 512 viewport so the shape sits inside the adaptive-icon safe
+  zone without a group transform — an adaptive icon may be masked to two
+  thirds of its canvas, and this spans 140..372 of 512, comfortably inside
+  the 85..427 that always survives the mask.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <path
+        android:pathData="M256,168 C222,146 178,140 140,146 L140,348 C178,342 222,348 256,370"
+        android:strokeColor="#FAF8F5"
+        android:strokeWidth="20"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M256,168 C290,146 334,140 372,146 L372,348 C334,342 290,348 256,370"
+        android:strokeColor="#FAF8F5"
+        android:strokeWidth="20"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M256,168 L256,370"
+        android:strokeColor="#FAF8F5"
+        android:strokeWidth="20"
+        android:strokeLineCap="round" />
+
+    <path android:pathData="M176,202 L222,206" android:strokeColor="#E8A33D"
+        android:strokeWidth="14" android:strokeLineCap="round" />
+    <path android:pathData="M176,248 L222,252" android:strokeColor="#E8A33D"
+        android:strokeWidth="14" android:strokeLineCap="round" />
+    <path android:pathData="M290,206 L336,202" android:strokeColor="#E8A33D"
+        android:strokeWidth="14" android:strokeLineCap="round" />
+    <path android:pathData="M290,252 L336,248" android:strokeColor="#E8A33D"
+        android:strokeWidth="14" android:strokeLineCap="round" />
+</vector>
