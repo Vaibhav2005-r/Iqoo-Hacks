@@ -9,7 +9,7 @@ services:
     name: khatasetu-lender
     runtime: static
     staticPublishPath: ./lender
-    buildCommand: ""
+    # No buildCommand: the page is plain HTML with nothing to compile.
     headers:
       # The page loads one CDN script (jsQR) and talks to nothing else.
       - path: /*
