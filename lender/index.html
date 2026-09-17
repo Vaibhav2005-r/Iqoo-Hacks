@@ -120,7 +120,12 @@
   credit assessment and makes no lending recommendation.
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<!-- jsQR 1.4.0 (Apache-2.0), vendored rather than loaded from a CDN.
+     The first attempt pointed at cdnjs, which does not host this library
+     at all and returned 404 in production - the page rendered fine and
+     the camera silently never decoded. A lender tool that breaks because
+     a third party moved a file is not worth the saved 251 KB. -->
+<script src="vendor/jsQR.js"></script>
 <script>
 (function () {
   "use strict";
@@ -260,7 +265,16 @@
 
   function tick() {
     var v = el("video");
-    if (v.readyState === v.HAVE_ENOUGH_DATA && typeof jsQR === "function") {
+    if (typeof jsQR !== "function") {
+      // Do not spin silently: without the decoder the camera would preview
+      // forever and never read anything, which looks like a broken QR rather
+      // than a broken page.
+      stopCam();
+      el("camErr").innerHTML = '<div class="notice err"><b>Scanner unavailable</b>' +
+        "The QR decoder did not load. Paste the code instead.</div>";
+      return;
+    }
+    if (v.readyState === v.HAVE_ENOUGH_DATA) {
       canvas.width = v.videoWidth; canvas.height = v.videoHeight;
       ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
       var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
