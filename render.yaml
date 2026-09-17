@@ -1,0 +1,20 @@
+# Render blueprint for the lender-side Credit Passport reader.
+#
+# A static site with no build step and no backend, because the passport QR
+# carries its own data — there is nothing to look up. The Flutter app is not
+# deployed here; it cannot build for web (sqflite, ML Kit and record have no
+# web implementations) and it is not meant to.
+services:
+  - type: web
+    name: khatasetu-lender
+    runtime: static
+    staticPublishPath: ./lender
+    buildCommand: ""
+    headers:
+      # The page loads one CDN script (jsQR) and talks to nothing else.
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KhataSetu — Credit Passport Reader</title>
+<style>
+  :root{
+    --ink:#10222e; --muted:#5b6b76; --line:#dfe5e9; --bg:#f4f6f7;
+    --card:#ffffff; --brand:#1b4965; --accent:#e8a33d;
+    --good:#1b7a43; --warn:#b3261e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  header{
+    background:var(--brand); color:#fff; padding:18px 24px;
+    display:flex; align-items:center; gap:12px;
+  }
+  header h1{font-size:16px; margin:0; font-weight:600; letter-spacing:.2px}
+  header .tag{
+    margin-left:auto; font-size:11px; background:rgba(255,255,255,.15);
+    padding:4px 10px; border-radius:20px;
+  }
+  main{max-width:880px; margin:0 auto; padding:24px}
+  .card{
+    background:var(--card); border:1px solid var(--line);
+    border-radius:14px; padding:20px; margin-bottom:16px;
+  }
+  h2{font-size:13px; text-transform:uppercase; letter-spacing:.8px;
+     color:var(--muted); margin:0 0 14px}
+  button{
+    font:inherit; font-weight:600; border:0; border-radius:10px;
+    padding:12px 18px; cursor:pointer; background:var(--brand); color:#fff;
+  }
+  button.ghost{background:transparent; color:var(--brand);
+               border:1px solid var(--line)}
+  button:disabled{opacity:.5; cursor:default}
+  textarea{
+    width:100%; min-height:90px; font:12px/1.5 ui-monospace,Menlo,monospace;
+    border:1px solid var(--line); border-radius:10px; padding:12px; resize:vertical;
+  }
+  .row{display:flex; gap:10px; flex-wrap:wrap}
+  #video{width:100%; max-width:380px; border-radius:12px; background:#000; display:block}
+  .hide{display:none !important}
+
+  .identity{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap}
+  .identity .who h3{margin:0; font-size:22px}
+  .identity .who p{margin:2px 0 0; color:var(--muted); font-size:13px}
+  .scoreBox{margin-left:auto; text-align:right}
+  .scoreBox .big{font-size:44px; font-weight:800; line-height:1; color:var(--brand)}
+  .scoreBox .of{font-size:13px; color:var(--muted)}
+  .band{display:inline-block; margin-top:6px; padding:4px 10px; border-radius:20px;
+        font-size:12px; font-weight:700; background:#eef3f6; color:var(--brand)}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px}
+  .stat .v{font-size:19px; font-weight:700}
+  .stat .k{font-size:12px; color:var(--muted); margin-top:2px}
+
+  .comp{margin-bottom:14px}
+  .comp .top{display:flex; justify-content:space-between; font-size:14px; font-weight:600}
+  .comp .bar{height:7px; background:#eceff1; border-radius:4px; margin:7px 0 5px; overflow:hidden}
+  .comp .fill{height:100%; background:var(--brand); border-radius:4px}
+  .comp .note{font-size:12.5px; color:var(--muted)}
+
+  .notice{
+    border-left:3px solid var(--accent); background:#fdf6e9;
+    padding:12px 14px; border-radius:0 8px 8px 0; font-size:13px; margin-bottom:16px;
+  }
+  .notice b{display:block; margin-bottom:3px}
+  .err{border-left-color:var(--warn); background:#fdeceb}
+  footer{color:var(--muted); font-size:12px; text-align:center; padding:0 24px 32px}
+</style>
+</head>
+<body>
+<header>
+  <svg width="22" height="22" viewBox="0 0 512 512" fill="none" stroke="#fff"
+       stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 168C222 146 178 140 140 146V348c38-6 82 0 116 22"/>
+    <path d="M256 168c34-22 78-28 116-22v202c-38-6-82 0-116 22"/>
+  </svg>
+  <h1>Credit Passport Reader</h1>
+  <span class="tag">Lender view</span>
+</header>
+
+<main>
+  <div id="intake" class="card">
+    <h2>Read a passport</h2>
+    <p style="margin-top:0;color:var(--muted);font-size:13.5px">
+      Scan the QR on the shopkeeper's Credit Passport, or paste its contents.
+      The code carries the figures itself — nothing is looked up, and this page
+      talks to no server.
+    </p>
+    <div class="row" style="margin-bottom:14px">
+      <button id="scanBtn">Scan with camera</button>
+      <button id="stopBtn" class="ghost hide">Stop camera</button>
+    </div>
+    <video id="video" class="hide" playsinline muted></video>
+    <div id="camErr"></div>
+    <details style="margin-top:14px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:13px">
+        Paste the code instead
+      </summary>
+      <div style="margin-top:10px">
+        <textarea id="paste" placeholder='{"v":1,"shop":"…"}'></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="readBtn" class="ghost">Read pasted code</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="out"></div>
+</main>
+
+<footer>
+  Figures are self-reported from the shopkeeper's device. This page performs no
+  credit assessment and makes no lending recommendation.
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // Mirrors PassportService.buildQrPayload in the app. Kept deliberately
+  // narrow: an unknown version is refused rather than guessed at, so a future
+  // passport cannot be silently misread as an older one.
+  var COMPONENTS = [
+    { key: "repayment", label: "Repayment consistency", max: 40,
+      note: "Share of udhar extended that comes back, averaged per customer." },
+    { key: "tenure", label: "Ledger history", max: 20,
+      note: "Days between the first and most recent entry." },
+    { key: "customers", label: "Active customers", max: 20,
+      note: "Distinct customers with recorded entries." },
+    { key: "velocity", label: "Recent activity", max: 20,
+      note: "Entries recorded in the last 30 days." }
+  ];
+
+  var rupee = function (n) {
+    if (n === null || n === undefined || isNaN(n)) return "—";
+    return "₹" + Number(n).toLocaleString("en-IN");
+  };
+  var el = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s === undefined || s === null ? "" : s).replace(/[&<>"']/g,
+      function (c) {
+        return { "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c];
+      });
+  };
+
+  function parse(raw) {
+    var data;
+    try { data = JSON.parse(String(raw).trim()); }
+    catch (e) { throw new Error("That is not a KhataSetu passport code."); }
+    if (!data || typeof data !== "object") {
+      throw new Error("That is not a KhataSetu passport code.");
+    }
+    if (data.v !== 1) {
+      throw new Error(
+        "Unsupported passport version (" + esc(data.v) + "). " +
+        "This reader understands version 1."
+      );
+    }
+    return data;
+  }
+
+  function band(score) {
+    if (score >= 75) return "Strong credit behaviour";
+    if (score >= 50) return "Building credit";
+    if (score >= 25) return "Early history";
+    return "Not enough history yet";
+  }
+
+  function render(d) {
+    var parts = d.parts || {};
+    var repayRate = d.credit > 0 ? Math.round((d.repaid / d.credit) * 100) : null;
+    var provisional = (d.tx || 0) < 5;
+
+    var comps = COMPONENTS.map(function (c) {
+      var earned = Number(parts[c.key] || 0);
+      var pct = Math.max(0, Math.min(100, (earned / c.max) * 100));
+      return '<div class="comp">' +
+        '<div class="top"><span>' + c.label + '</span>' +
+        '<span>' + earned + " / " + c.max + "</span></div>" +
+        '<div class="bar"><div class="fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="note">' + c.note + "</div></div>";
+    }).join("");
+
+    var stats = [
+      ["Credit extended", rupee(d.credit)],
+      ["Repaid", rupee(d.repaid)],
+      ["Outstanding", rupee(d.out)],
+      ["Repayment rate", repayRate === null ? "—" : repayRate + "%"],
+      ["Active customers", d.cust],
+      ["Ledger entries", d.tx],
+      ["History", (d.days || 0) + " days"],
+      ["Generated", esc(d.gen)]
+    ].map(function (s) {
+      return '<div class="stat"><div class="v">' + esc(s[1]) +
+             '</div><div class="k">' + s[0] + "</div></div>";
+    }).join("");
+
+    el("out").innerHTML =
+      (provisional
+        ? '<div class="notice err"><b>Provisional — thin file</b>' +
+          "Only " + esc(d.tx) + " ledger entr" + (d.tx === 1 ? "y" : "ies") +
+          ". The score is not yet meaningful at this volume.</div>"
+        : "") +
+      '<div class="notice"><b>Self-attested record</b>' +
+      "These figures come from the shopkeeper's own device and are not " +
+      "bank-verified. Treat this as a structured account of their ledger, " +
+      "not as confirmed financial data.</div>" +
+
+      '<div class="card"><div class="identity">' +
+        '<div class="who"><h3>' + esc(d.shop) + "</h3>" +
+        "<p>" + esc(d.owner) + (d.loc ? " · " + esc(d.loc) : "") + "</p></div>" +
+        '<div class="scoreBox"><div class="big">' + esc(d.display) + "</div>" +
+        '<div class="of">of 850 · ' + esc(d.score) + " of 100 points</div>" +
+        '<div class="band">' + band(Number(d.score)) + "</div></div>" +
+      "</div></div>" +
+
+      '<div class="card"><h2>Ledger summary</h2>' +
+      '<div class="grid">' + stats + "</div></div>" +
+
+      '<div class="card"><h2>How the score is built</h2>' + comps + "</div>";
+
+    el("out").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function fail(msg) {
+    el("out").innerHTML = '<div class="notice err"><b>Could not read that</b>' +
+      esc(msg) + "</div>";
+  }
+
+  function handle(raw) {
+    try { render(parse(raw)); }
+    catch (e) { fail(e.message); }
+  }
+
+  el("readBtn").addEventListener("click", function () {
+    var v = el("paste").value.trim();
+    if (v) handle(v);
+  });
+
+  // --- camera ---
+  var stream = null, raf = null;
+  var canvas = document.createElement("canvas");
+  var ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  function stopCam() {
+    if (raf) cancelAnimationFrame(raf), raf = null;
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); }), stream = null;
+    el("video").classList.add("hide");
+    el("stopBtn").classList.add("hide");
+    el("scanBtn").disabled = false;
+  }
+
+  function tick() {
+    var v = el("video");
+    if (v.readyState === v.HAVE_ENOUGH_DATA && typeof jsQR === "function") {
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+      var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var code = jsQR(img.data, img.width, img.height);
+      if (code && code.data) { stopCam(); handle(code.data); return; }
+    }
+    raf = requestAnimationFrame(tick);
+  }
+
+  el("scanBtn").addEventListener("click", function () {
+    el("camErr").innerHTML = "";
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      el("camErr").innerHTML = '<div class="notice err"><b>No camera available</b>' +
+        "Paste the code instead.</div>";
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }, audio: false
+    }).then(function (s) {
+      stream = s;
+      var v = el("video");
+      v.srcObject = s; v.setAttribute("playsinline", true); v.play();
+      v.classList.remove("hide");
+      el("stopBtn").classList.remove("hide");
+      el("scanBtn").disabled = true;
+      raf = requestAnimationFrame(tick);
+    }).catch(function (e) {
+      // The usual cause is an insecure origin: getUserMedia needs HTTPS or
+      // localhost, so a file:// open will always land here.
+      el("camErr").innerHTML = '<div class="notice err"><b>Camera unavailable</b>' +
+        esc(e && e.message ? e.message : String(e)) +
+        "<br>The camera needs HTTPS or localhost. Paste the code instead.</div>";
+    });
+  });
+
+  el("stopBtn").addEventListener("click", stopCam);
+
+  // Deep link for testing: ?p=<url-encoded payload>
+  var q = new URLSearchParams(location.search).get("p");
+  if (q) { el("paste").value = q; handle(q); }
+})();
+</script>
+</body>
+</html>
