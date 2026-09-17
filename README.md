@@ -4,7 +4,9 @@
 
 A kirana shopkeeper's paper credit ledger, turned into a digital ledger, a
 transparent trust score, and a shareable Credit Passport — using voice, camera,
-and on-device AI. No account, no server, no network.
+and on-device AI. The app has no account, no server and no network permission.
+A separate static page lets a lender read a passport; it has no backend either,
+because the QR carries its own data.
 
 Built for the iQOO Hackathon 2026 (Hyderabad), FinTech & Commerce track, by
 **Caffeinated Compilers**.
@@ -33,6 +35,9 @@ KhataSetu is the bridge (*setu*) between the two.
 4. **Share a Credit Passport.** A card with the score, its breakdown, summary
    stats, and a QR a lender can scan — the QR carries the data itself, so it
    works with no server behind it.
+5. **Lender reads it.** A separate static page scans that QR and shows the
+   ledger position and how the score was built — live at
+   [khatasetu-lender.onrender.com](https://khatasetu-lender.onrender.com).
 
 ---
 
@@ -50,31 +55,42 @@ R8 keep rules and the release manifest overlay, both of which took an actual
 APK build to discover. See [docs/ANDROID.md](docs/ANDROID.md).
 
 ```bash
-flutter test                 # 61 tests: amount parsing, extraction, scoring, UI
-flutter build apk --release  # ~84 MB, or --split-per-abi for arm64 only
+flutter test                 # 129 tests: parsing, extraction, scoring, QR contract, UI
+flutter build apk --release --split-per-abi   # arm64 is the one you want
 ./scripts/setup.sh           # only if android/ is missing or broken
 ```
+
+Two APK sizes, and the difference is the speech model:
+
+| Build | Size | Voice |
+|---|---|---|
+| `assets/models/` empty | **33 MB** | needs `ggml-tiny.bin` pushed with adb |
+| after `./scripts/bundle_model.sh` | **103 MB** | works the moment it is installed |
+
+The model is gitignored, so a fresh clone builds the small one. Bundling is
+worth it for a build you hand to someone to test — see
+[docs/MODELS.md](docs/MODELS.md).
 
 ### Verified against
 
 Flutter 3.47.2 · Dart 3.13.2 · Android SDK 36.0.0 · Gradle 9.3.1 · JDK 25.
 
 - `flutter analyze` — no issues
-- `flutter test` — 79 passing
+- `flutter test` — **129 passing**
 - `flutter build apk --release` — builds, no `INTERNET` permission
 - Run on an Android 16 emulator (Pixel 7, arm64): onboarding, voice-path
   extraction, ledger, balances, trust score, Credit Passport with QR, and
   camera OCR all exercised end to end
+- Lender page verified on the live Render deployment: a real passport QR
+  decoded (268 bytes, exact) and rendered
 
-whisper.cpp runs on-device: `libwhisper.so` is in the APK, the model loads
-from adb-pushed storage, and real inference was observed (7.8 s for a ~2 s clip
-on the emulator).
+whisper.cpp runs on-device — `libwhisper.so` is in the APK and the model
+unpacks itself from `assets/` on first launch, so a clean install needs no adb.
 
-Not yet verified: **a physical phone**, and **transcription accuracy on real
-Hindi speech** — the emulator has no usable microphone input, so only the
-silence path has been exercised end to end. **Whisper latency on the emulator
-is poor** (a 6-second clip took well over a minute); a flagship phone should be
-far faster, but measure it before relying on it.
+**Still not verified: a physical phone.** Specifically, whisper transcribing a
+real human voice (no emulator gives a usable microphone) and OCR on genuine
+handwriting rather than a rendered font. Both are the first things to try on
+the demo device.
 
 ---
 
@@ -94,9 +110,14 @@ lib/
     ocr_service.dart         ML Kit text recognition
     scoring_service.dart     the trust score
     passport_service.dart    QR payload + share
+    model_manager.dart       finds and VALIDATES model files on the device
   screens/      onboarding, home, voice entry, camera scan, customer, passport
-  widgets/      AppCard, DraftEditor, EmptyState, OnDeviceBadge
+  widgets/      AppCard, DraftEditor, EmptyState, OnDeviceBadge,
+                ModelStatusSheet (tap the mic badge to see what is missing)
 native_ai/      opt-in llama.cpp + whisper.cpp implementations (see below)
+lender/         the lender-side passport reader (static, no build step)
+design/         app_icon.html — source for the launcher icon and splash
+assets/models/  gitignored; bundle_model.sh drops whisper here
 ```
 
 ### Why the AI layer is built the way it is
@@ -111,23 +132,40 @@ copied in by a script. The app always compiles and always runs end-to-end:
 
 | | Extraction | Speech |
 |---|---|---|
-| **Currently enabled** | `RuleBasedExtractor` — deterministic, on-device, zero deps | **whisper-tiny via whisper.cpp** |
-| **Still off** | Gemma-2B GGUF via llama.cpp | — |
+| **Enabled** | `RuleBasedExtractor` — deterministic, on-device, zero storage | **whisper-tiny via whisper.cpp** |
+| **Not shipped** | any LLM — measured worse than the rules | — |
 
-Speech is **on** and verified running on-device; the LLM is not. They are
-independent on purpose, and `./scripts/enable_native_ai.sh --asr-only` turns on
-only the cheaper, higher-value half (whisper-tiny is ~75 MB against ~1.5 GB for
-Gemma, and `fllama` is a git dependency with a heavier native build).
+Speech is **on**. The LLM is not, and that is now a measured decision rather
+than a precaution: Gemma-2-2b, Llama-3.2-1B and Qwen2.5-0.5B were each scored
+against the rule extractor on the same 13 cases, and **all three lost on every
+axis** while costing 469 MB to 1.6 GB. Full table in
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+
+The original reason still stands too: `fllama` uses Dart native-assets hooks
+that run for every build target, so enabling it breaks `flutter test` on a host
+without a CMake 3.x toolchain. `./scripts/enable_native_ai.sh --asr-only` turns
+on only the half that works.
 
 `AiRuntime` chooses at startup and degrades at request time: if the LLM returns
 malformed JSON, times out, or drops a field, the deterministic result fills the
 gap. A model failure costs extraction quality, never the entry.
 
-The rule-based extractor is not a stub. It handles Devanagari and romanised
-Hindi plus English, colloquial number forms (`dhai sau` = 250, `saade teen sau`
-= 350), Indian digit grouping, direction detection with correct precedence
-(`paise wapas diye` is a payment, not credit), and name resolution against the
-existing customer roster. It is what keeps the demo alive on stage.
+The rule-based extractor is not a stub — it is the best-scoring engine tested.
+It handles:
+
+- **Devanagari, romanised Hindi and English**, plus every Indic and
+  Arabic-Indic digit block (ML Kit returns *Bengali* zeros for a Hindi page).
+- **Colloquial numbers**: `dhai sau` = 250, `saade teen sau` = 350, Indian
+  digit grouping.
+- **Hindi grammar for direction.** The postposition decides, not the verb:
+  `Sharma **ko** 500 diya` is credit, `Ramesh **ne** 500 diye` is a payment.
+  Same verb, opposite meaning — reading the verb alone recorded repayments as
+  fresh credit and doubled the debt.
+- **Names by elimination.** Capitalisation cannot be relied on (Devanagari has
+  none, and transcripts are often lower case), so a stopword list rules out
+  what *cannot* be a name and what survives is scored by position.
+- **Whisper's own failure modes**: it glues short words together, so `chaar
+  sau` arrives as `Charso`. Glued number tokens are segmented back apart.
 
 To turn the real models on:
 
@@ -163,6 +201,36 @@ against rupees extended is what a lender actually cares about.
 Below 5 entries the score is labelled provisional, in the UI and on the
 passport. A confident-looking number built on four entries would be the same
 dishonesty this product exists to fix.
+
+---
+
+## The lender side
+
+[khatasetu-lender.onrender.com](https://khatasetu-lender.onrender.com) —
+source in [`lender/`](lender/), deployed from `render.yaml`.
+
+A single static page. A lender scans the passport QR and sees the ledger
+position and how each of the four score components was earned. It has **no
+backend**, because the QR carries the figures rather than a URL — so the page
+looks nothing up, stores nothing, and sends nothing anywhere.
+
+It deliberately offers **no lending recommendation** — no loan sizing, no risk
+grade. Underwriting is out of scope, and a page that invented a number would
+be worse than one that does not. It states plainly that the data is
+self-attested rather than bank-verified, and flags a file under five entries
+as too thin to read.
+
+The payload is a contract between two codebases that cannot import each other,
+so `test/passport_qr_contract_test.dart` pins the exact keys, types, date
+format and a size ceiling. Rename a field in Dart and the app would keep
+emitting a valid QR while the page silently rendered blanks; that test fails
+instead.
+
+Two things found by deploying it rather than by reading it: the QR library was
+being loaded from a CDN that **does not host it** (404 in production, invisible
+because only the camera path was dead), and it is now vendored locally. And the
+scanner was verified against a real passport QR on the live site — 268 bytes
+decoded exactly.
 
 ---
 
@@ -207,11 +275,22 @@ it.
   runs on CPU (and GPU via Vulkan where available), not the Hexagon NPU. Real
   NPU delegation would mean Qualcomm's QNN SDK — a much larger integration than
   a 30-hour build allows. The UI and this README say "on-device" and mean it.
-- **whisper-tiny multilingual is mediocre on Hindi.** Community reports are
-  consistent on this and we are not going to pretend otherwise. The product
-  answer is the confirmation card: every transcription is shown verbatim as
-  "what I heard" and every field is editable, so a mishearing is a one-tap fix
-  rather than a wrong ledger entry.
+- **whisper-tiny on Hindi is weak, and now measured rather than assumed.**
+  Nine Hindi sentences were spoken, transcribed, and the raw output run through
+  the extractor. Names survived well; amounts did not:
+
+  | | score |
+  |---|---|
+  | Customer name | 7/9 |
+  | Direction (credit vs payment) | 8/9 |
+  | **Amount** | **4/9** |
+
+  Whisper also returns **romanised Latin, not Devanagari**, even told the
+  language is Hindi. Roughly half of spoken amounts will need a correction —
+  it heard `paanch sau` as "5-10" and `do sau pachas` as "25th", neither
+  recoverable. That is what the confirmation card is for: every transcript is
+  shown verbatim as "what I heard", every field is editable, and a draft with
+  an unreadable amount arrives **empty rather than wrong**.
 - **Handwriting OCR makes mistakes**, and in more interesting ways than
   expected. On a real scan, ML Kit's Indic recogniser returned **Bengali digit
   zeros** (U+09E6) for zeros written on a Hindi page — so "500" arrived as
